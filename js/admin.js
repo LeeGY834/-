@@ -31,18 +31,45 @@ show();
 async function codeEditor(){
  const files=['index.html','admin.html','css/style.css','js/site.js','js/admin.js'];
  const edgeUrl=window.NAMCHON_CONFIG?.CODE_EDITOR_FUNCTION_URL || `${window.NAMCHON_CONFIG?.SUPABASE_URL?.replace(/\/$/,'')}/functions/v1/github-editor`;
- $('editor').innerHTML=`<div class="stack"><p class="muted">HTML·CSS·JavaScript 원본을 GitHub에 게시합니다. 설정을 완료하기 전에는 사용할 수 없습니다. GitHub 토큰을 이 화면이나 config.js에 입력하지 마세요.</p><label class="field">편집할 파일<select id="code-file">${files.map(f=>`<option value="${f}">${f}</option>`).join('')}</select></label><div class="toolbar"><button class="btn alt" id="code-load">GitHub 파일 불러오기</button><button class="btn alt" id="code-preview">HTML/CSS 미리보기</button><button class="btn" id="code-save">GitHub에 게시</button></div><label class="field">코드<textarea id="code-text" spellcheck="false" rows="22" style="font-family:monospace;tab-size:2;white-space:pre;overflow:auto"></textarea></label><p class="muted" id="code-info">먼저 파일을 불러오세요. 미리보기에서는 JavaScript를 실행하지 않습니다.</p><iframe id="code-frame" title="코드 미리보기" sandbox="" style="width:100%;height:440px;background:white;border:1px solid #888;display:none"></iframe></div>`;
+ $('editor').innerHTML=`<div class="stack"><p class="muted">HTML·CSS·JavaScript 원본을 GitHub에 게시합니다. 설정을 완료하기 전에는 사용할 수 없습니다. GitHub 토큰을 이 화면이나 config.js에 입력하지 마세요.</p><label class="field">편집할 파일<select id="code-file">${files.map(f=>`<option value="${f}">${f}</option>`).join('')}</select></label><div class="toolbar"><button class="btn alt" id="code-load">GitHub 파일 불러오기</button><button class="btn alt" id="code-preview">HTML/CSS 미리보기</button><button class="btn" id="code-save">GitHub에 게시</button><button class="btn alt" id="code-history">수정 이력·복원</button></div><div id="code-history-panel" class="stack" style="display:none"></div><label class="field">코드<textarea id="code-text" spellcheck="false" rows="22" style="font-family:monospace;tab-size:2;white-space:pre;overflow:auto"></textarea></label><p class="muted" id="code-info">먼저 파일을 불러오세요. 미리보기에서는 JavaScript를 실행하지 않습니다.</p><iframe id="code-frame" title="코드 미리보기" sandbox="" style="width:100%;height:440px;background:white;border:1px solid #888;display:none"></iframe></div>`;
  let sha=null,loadedPath=null;
  const info=t=>$('code-info').textContent=t;
- const request=async(method,path,body)=>{
+ const request=async(method,path,body,params='')=>{
   const {data:{session},error:sessionError}=await db.auth.getSession();
   if(sessionError||!session?.access_token)throw Error('다시 로그인해 주세요.');
-  const response=await fetch(`${edgeUrl}?path=${encodeURIComponent(path)}`,{method,headers:{'Authorization':`Bearer ${session.access_token}`,'apikey':window.NAMCHON_CONFIG.SUPABASE_ANON_KEY,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
+  const response=await fetch(`${edgeUrl}?path=${encodeURIComponent(path)}${params}`,{method,headers:{'Authorization':`Bearer ${session.access_token}`,'apikey':window.NAMCHON_CONFIG.SUPABASE_ANON_KEY,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
   const data=await response.json().catch(()=>({}));
   if(!response.ok)throw Error(data.error||`서버 오류 ${response.status}`);
   return data;
  };
- $('code-file').onchange=()=>{sha=null;loadedPath=null;$('code-text').value='';$('code-frame').style.display='none';info('파일을 선택했습니다. GitHub 파일 불러오기를 누르세요.')};
+ $('code-history').onclick=async()=>{
+  const path=$('code-file').value,panel=$('code-history-panel');
+  panel.style.display='block';panel.textContent='수정 이력을 불러오는 중...';
+  try{
+   const result=await request('GET',path,null,'&action=history');
+   panel.innerHTML='<h3>GitHub 수정 이력 (최근 20개)</h3><p class="muted">복원하면 선택한 버전의 파일 내용으로 새 GitHub 커밋을 만듭니다. 다른 파일은 변경하지 않습니다.</p>';
+   if(!result.history.length){panel.append(document.createTextNode('수정 이력이 없습니다.'));return;}
+   for(const entry of result.history){
+    const line=document.createElement('div');line.className='item-row';
+    const desc=document.createElement('span');
+    desc.textContent=`${new Date(entry.date).toLocaleString('ko-KR')} · ${entry.message.slice(0,90)} · ${entry.sha.slice(0,8)}`;
+    const actions=document.createElement('div');actions.className='toolbar';
+    const view=document.createElement('button');view.className='btn alt';view.textContent='이 버전 불러오기';
+    view.onclick=async()=>{
+     if($('code-file').value!==path)return info('파일 선택이 바뀌었습니다. 다시 이력을 열어주세요.');
+     if($('code-text').value && !confirm('현재 편집 중인 내용이 바뀝니다. 계속할까요?'))return;
+     try{
+      const old=await request('GET',path,null,`&action=version&ref=${entry.sha}`);
+      const current=await request('GET',path);
+      $('code-text').value=old.content;sha=current.sha;loadedPath=path;
+      info(`${entry.sha.slice(0,8)} 버전을 편집창에 불러왔습니다. 확인 후 GitHub에 게시하면 복원됩니다.`);
+     }catch(e){info('과거 버전 불러오기 실패: '+msg(e))}
+    };
+    actions.append(view);line.append(desc,actions);panel.append(line);
+   }
+  }catch(e){panel.textContent='수정 이력 조회 실패: '+msg(e)}
+ };
+ $('code-file').onchange=()=>{$('code-history-panel').style.display='none';sha=null;loadedPath=null;$('code-text').value='';$('code-frame').style.display='none';info('파일을 선택했습니다. GitHub 파일 불러오기를 누르세요.')};
  $('code-load').onclick=async()=>{try{const path=$('code-file').value;info('파일을 불러오는 중...');const result=await request('GET',path);$('code-text').value=result.content;sha=result.sha;loadedPath=path;info(`${path} 불러오기 완료. 편집 후 게시할 수 있습니다.`)}catch(e){info('불러오기 실패: '+msg(e))}};
  $('code-preview').onclick=()=>{if(!sha||loadedPath!==$('code-file').value)return info('먼저 파일을 불러오세요.');const path=loadedPath,code=$('code-text').value;let html;if(path.endsWith('.html')){html=code.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'');}else if(path.endsWith('.css')){html=`<!doctype html><meta charset="utf-8"><style>${code.replace(/<\/style/gi,'<\\/style')}</style><main><h1>디자인 미리보기</h1><p>색상, 폰트 등 CSS 일부만 확인할 수 있습니다.</p><button>버튼 예시</button></main>`;}else{return info('JavaScript는 안전상 이 화면에서 실행 미리보기를 지원하지 않습니다. 게시 전 별도 테스트가 필요합니다.')};const frame=$('code-frame');frame.srcdoc=html;frame.style.display='block';info('제한된 미리보기입니다. 실제 사이트와 다를 수 있으며 JavaScript는 실행되지 않습니다.')};
  $('code-save').onclick=async()=>{try{const path=$('code-file').value;if(!sha||loadedPath!==path)throw Error('먼저 해당 파일을 불러오세요.');const content=$('code-text').value;if(!content.trim())throw Error('빈 파일은 게시할 수 없습니다.');if(!confirm(`${path} 파일을 실제 GitHub 홈페이지에 게시할까요? 잘못된 코드는 홈페이지 오류를 일으킬 수 있습니다.`))return;info('GitHub에 게시 중...');const result=await request('POST',path,{sha,content,message:`CMS: update ${path}`});sha=result.sha;info(`게시 완료! GitHub 커밋: ${result.commitSha}. GitHub Pages 반영까지 몇 분 걸릴 수 있습니다.`)}catch(e){info('게시 실패: '+msg(e))}};
