@@ -1,6 +1,6 @@
 import {db,configured,categories,esc,getSettings,msg} from './common.js';
 const $=id=>document.getElementById(id);let active='products';let currentUser=null;
-const tabs=[['products','상품 관리'],['settings','홈페이지·매장 정보'],['design','디자인·화면 설정'],['notices','행사·공지사항'],['popups','행사 팝업'],['code','고급 코드 편집'],['visual','화면 보면서 편집']];
+const tabs=[['products','상품 관리'],['settings','홈페이지·매장 정보'],['design','디자인·화면 설정'],['notices','행사·공지사항'],['popups','행사 팝업'],['code','고급 코드 편집'],['visual','화면 보면서 편집'],['layout','카드 배치·크기·순서']];
 const status=s=>$('status').textContent=s;
 const input=(key,label,value='',type='text')=>`<label class="field">${label}<input name="${key}" type="${type}" value="${esc(value)}"></label>`;
 const area=(key,label,value='')=>`<label class="field">${label}<textarea name="${key}" rows="3">${esc(value)}</textarea></label>`;
@@ -11,7 +11,7 @@ async function show(){if(!configured){status('먼저 js/config.js에 Supabase �
 $('login-btn').onclick=async()=>{if(!configured)return status('Supabase 연결 설정이 필요합니다.');const {error}=await db.auth.signInWithPassword({email:$('email').value,password:$('password').value});if(error)return status(msg(error));if(!(await authorized())){await db.auth.signOut();return status('관리자 권한이 없는 계정입니다.')}show()};
 $('logout').onclick=async()=>{await db.auth.signOut();currentUser=null;show()};
 async function upload(file,bucket){if(!file||!file.size)return null;if(!file.type.startsWith('image/'))throw Error('이미지 파일만 업로드할 수 있습니다.');if(file.size>5*1024*1024)throw Error('이미지는 5MB 이하로 업로드하세요.');const path=`${currentUser.id}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;const {error}=await db.storage.from(bucket).upload(path,file,{contentType:file.type});if(error)throw error;return db.storage.from(bucket).getPublicUrl(path).data.publicUrl}
-async function render(){try{if(active==='products')await products();if(active==='settings')await settings();if(active==='design')await design();if(active==='notices')await entries('notices');if(active==='popups')await entries('popups');if(active==='code')await codeEditor();if(active==='visual')await visualEditor()}catch(e){status('오류: '+msg(e))}}
+async function render(){try{if(active==='products')await products();if(active==='settings')await settings();if(active==='design')await design();if(active==='notices')await entries('notices');if(active==='popups')await entries('popups');if(active==='code')await codeEditor();if(active==='visual')await visualEditor();if(active==='layout')await cardLayoutEditor()}catch(e){status('오류: '+msg(e))}}
 async function products(){const {data,error}=await db.from('products').select('*').order('sort_order');if(error)throw error;const rows=data||[];$('editor').innerHTML=`<div class="stack"><button class="btn" id="new-item">+ 새 상품</button><div id="product-form"></div><div>${rows.map(p=>`<div class="item-row"><span>${esc(p.category)} · ${esc(p.name)} <span class="gold">${esc(p.price_text)}</span></span><div class="toolbar"><button class="btn alt" data-edit="${p.id}">수정</button><button class="btn alt" data-delete="${p.id}">삭제</button></div></div>`).join('')}</div></div>`;const edit=p=>{$('product-form').innerHTML=`<form class="stack" id="edit-product"><h3>${p.id?'상품 수정':'새 상품'}</h3>${input('name','상품명',p.name)}<label class="field">카테고리<select name="category">${categories.map(c=>`<option ${c===p.category?'selected':''}>${c}</option>`).join('')}</select></label>${input('price_text','가격 문구',p.price_text)}${area('description','설명',p.description)}${input('sort_order','정렬 순서',p.sort_order??0,'number')}<label class="field">상품 사진 업로드<input name="photo" type="file" accept="image/*"></label>${p.image_url?`<img src="${esc(p.image_url)}" alt="현재 사진" style="max-width:160px">`:''}${check('featured','메인 추천 상품',p.is_featured)}${check('visible','고객에게 표시',p.is_visible??true)}${check('sold_out','품절',p.is_sold_out)}<button class="btn" type="submit">이 상품 저장</button></form>`;$('edit-product').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget,d=formData(f);try{const image=await upload(f.elements.photo.files[0],'product-images');const payload={name:d.name.trim(),category:d.category,price_text:d.price_text,description:d.description,sort_order:Number(d.sort_order)||0,is_featured:f.elements.featured.checked,is_visible:f.elements.visible.checked,is_sold_out:f.elements.sold_out.checked};if(image)payload.image_url=image;if(!payload.name)throw Error('상품명을 입력하세요.');const q=p.id?db.from('products').update(payload).eq('id',p.id):db.from('products').insert(payload);const {error}=await q;if(error)throw error;status('상품이 저장되었습니다.');await products()}catch(err){status('저장 실패: '+msg(err))}}};$('new-item').onclick=()=>edit({category:'한우',is_visible:true});document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>edit(rows.find(p=>p.id===b.dataset.edit)));document.querySelectorAll('[data-delete]').forEach(b=>b.onclick=async()=>{if(!confirm('이 상품을 삭제할까요?'))return;const {error}=await db.from('products').delete().eq('id',b.dataset.delete);if(error)return status(msg(error));products()})}
 async function settings(){const values=await getSettings();const fields=[['hero_title','메인 배너 제목'],['hero_desc','메인 배너 설명'],['intro','매장 소개'],['address','매장 주소'],['hours','영업시간'],['parking','주차 안내'],['phone','전화번호']];$('editor').innerHTML=`<form id="settings-form" class="stack">${fields.map(([k,n])=>area(k,n,values[k]||'')).join('')}<label class="field">메인 배너 이미지<input name="hero_file" type="file" accept="image/*"></label>${values.hero_image?`<img src="${esc(values.hero_image)}" style="max-width:300px" alt="현재 배너">`:''}<button class="btn">설정 저장</button></form>`;$('settings-form').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget;try{const changes=fields.map(([key])=>({key,value:f.elements[key].value}));const image=await upload(f.elements.hero_file.files[0],'product-images');if(image)changes.push({key:'hero_image',value:image});const {error}=await db.from('site_settings').upsert(changes,{onConflict:'key'});if(error)throw error;status('홈페이지 설정을 저장했습니다.');settings()}catch(err){status(msg(err))}}}
 async function design(){
@@ -90,4 +90,49 @@ async function visualEditor(){
  $('v-pc').onclick=()=>{frame.style.width='100%';info('PC 화면 미리보기')};
  $('v-mobile').onclick=()=>{frame.style.width='375px';frame.style.maxWidth='100%';info('모바일 375px 미리보기')};
  $('v-save').onclick=async()=>{const btn=$('v-save');btn.disabled=true;try{const changes=fields.map(([key])=>({key,value:document.querySelector(`[data-vinput="${key}"]`).value}));const image=await upload($('v-hero-file').files[0],'product-images');if(image)changes.push({key:'hero_image',value:image});const {error}=await db.from('site_settings').upsert(changes,{onConflict:'key'});if(error)throw error;info('저장 완료! 실제 고객 홈페이지를 새로고침해 확인하세요.');status('시각적 편집 내용이 저장되었습니다.');frame.contentWindow.location.reload()}catch(e){info('저장 실패: '+msg(e))}finally{btn.disabled=false}};
+}
+
+
+// 카드 배치·크기·순서: 기존 products.sort_order 및 site_settings 사용
+async function cardLayoutEditor(){
+ const [settings,result]=await Promise.all([getSettings(),db.from('products').select('*').order('sort_order')]);
+ if(result.error)throw result.error;
+ const rows=result.data||[];
+ const numeric=(key,def,min,max)=>{const n=Number(settings[key]);return settings[key]!==undefined&&Number.isFinite(n)?Math.min(max,Math.max(min,n)):def};
+ const defaults={columns:numeric('card_columns',4,1,6),mobile:numeric('card_mobile_columns',2,1,3),gap:numeric('card_gap',16,0,48),image:numeric('card_image_height',180,100,420),radius:numeric('card_radius',10,0,32)};
+ const groups=categories.map(cat=>({cat,items:rows.filter(p=>p.category===cat)}));
+ const control=(key,label,min,max,unit)=>`<label class="field">${label}<div class="toolbar"><input data-layout="${key}" type="range" min="${min}" max="${max}" value="${defaults[key]}" style="flex:1"><output data-output="${key}">${defaults[key]}${unit}</output></div></label>`;
+ $('editor').innerHTML=`<div class="stack"><p class="muted">상품 카드 크기와 간격, PC·모바일 열 수, 카테고리별 상품 순서를 한곳에서 조절합니다. '모두 저장'을 누르기 전까지 실제 홈페이지에는 적용되지 않습니다.</p><div class="toolbar"><button type="button" class="btn" id="layout-save">카드 디자인·순서 모두 저장</button><button type="button" class="btn alt" id="layout-reset">설정값 초기화</button></div><div class="panel stack"><h3>카드 크기·배치</h3>${control('columns','PC 한 줄 카드 개수',1,6,'개')}${control('mobile','모바일 한 줄 카드 개수',1,3,'개')}${control('gap','카드 사이 간격',0,48,'px')}${control('image','카드 사진 높이',100,420,'px')}${control('radius','카드 모서리 둥글기',0,32,'px')}</div><div class="panel stack"><h3>실시간 카드 미리보기</h3><p class="muted">아래는 샘플 미리보기이며, 실제 홈페이지에선 화면 폭에 따라 열 수가 제한될 수 있습니다.</p><div id="layout-preview" style="display:grid;gap:16px;max-width:100%;overflow:hidden">${rows.filter(p=>p.is_visible).slice(0,6).map(p=>`<article class="card">${p.image_url?`<img src="${esc(p.image_url)}" alt="" loading="lazy">`:'<div style="height:180px;background:#292929"></div>'}<div class="details"><strong>${esc(p.name)}</strong><p class="price">${esc(p.price_text||'가격 문의')}</p></div></article>`).join('')||'<p class="muted">등록된 상품이 없습니다.</p>'}</div></div><div class="stack"><h3>카테고리별 상품 순서</h3><p class="muted">↑ ↓ 버튼으로 상품의 자리를 바꾸세요. 같은 카테고리 안에서만 이동할 수 있습니다.</p>${groups.map(g=>`<div class="panel stack"><h3>${esc(g.cat)}</h3><div data-order-group="${esc(g.cat)}">${g.items.map(p=>`<div class="item-row" data-order-id="${esc(String(p.id))}"><span>${p.image_url?`<img src="${esc(p.image_url)}" alt="" style="width:48px;height:48px;object-fit:cover;vertical-align:middle;margin-right:8px">`:''}${esc(p.name)}${p.is_visible?'':' (숨김)'}</span><div class="toolbar"><button type="button" class="btn alt" data-move="up">↑</button><button type="button" class="btn alt" data-move="down">↓</button></div></div>`).join('')||'<p class="muted">등록된 상품이 없습니다.</p>'}</div></div>`).join('')}</div><p id="layout-info" class="muted"></p></div>`;
+ const get=k=>Number($('editor').querySelector(`[data-layout="${k}"]`).value);
+ const update=()=>{
+  for(const k of Object.keys(defaults))$('editor').querySelector(`[data-output="${k}"]`).textContent=get(k)+(k==='columns'||k==='mobile'?'개':'px');
+  const preview=$('layout-preview'),cols=Math.min(get('columns'),Math.max(1,Math.floor(preview.clientWidth/130)));
+  preview.style.gridTemplateColumns=`repeat(${cols},minmax(0,1fr))`;
+  preview.style.gap=get('gap')+'px';
+  preview.querySelectorAll('.card').forEach(el=>{el.style.borderRadius=get('radius')+'px';const img=el.querySelector('img');if(img)img.style.height=get('image')+'px'});
+ };
+ $('editor').querySelectorAll('[data-layout]').forEach(el=>el.addEventListener('input',update));
+ $('layout-reset').onclick=()=>{for(const [k,v] of Object.entries({columns:4,mobile:2,gap:16,image:180,radius:10}))$('editor').querySelector(`[data-layout="${k}"]`).value=v;update()};
+ $('editor').querySelectorAll('[data-move]').forEach(b=>b.onclick=()=>{const item=b.closest('[data-order-id]');if(b.dataset.move==='up'&&item.previousElementSibling?.hasAttribute('data-order-id'))item.parentElement.insertBefore(item,item.previousElementSibling);if(b.dataset.move==='down'&&item.nextElementSibling?.hasAttribute('data-order-id'))item.parentElement.insertBefore(item.nextElementSibling,item)});
+ $('layout-save').onclick=async()=>{
+  if(!confirm('카드 디자인과 상품 순서를 실제 홈페이지에 저장할까요?'))return;
+  const btn=$('layout-save'),info=$('layout-info');btn.disabled=true;info.textContent='저장 중...';
+  try{
+   const changes=[['card_columns',get('columns')],['card_mobile_columns',get('mobile')],['card_gap',get('gap')],['card_image_height',get('image')],['card_radius',get('radius')]].map(([key,value])=>({key,value:String(value)}));
+   const {error}=await db.from('site_settings').upsert(changes,{onConflict:'key'});if(error)throw error;
+   let index=1;
+   for(const group of $('editor').querySelectorAll('[data-order-group]')){
+    for(const el of group.querySelectorAll('[data-order-id]')){
+     const row=rows.find(p=>String(p.id)===el.dataset.orderId);
+     if(!row)throw Error('상품을 찾을 수 없습니다.');
+     if(Number(row.sort_order)!==index){const {error}=await db.from('products').update({sort_order:index}).eq('id',row.id);if(error)throw error;}
+     index++;
+    }
+   }
+   info.textContent='저장 성공! 고객 홈페이지를 새로고침해 확인하세요.';
+   status('카드 크기·배치·상품 순서 저장 완료');
+  }catch(e){info.textContent='저장 중 오류가 발생했습니다. 일부 변경이 적용됐을 수 있습니다: '+msg(e)}
+  finally{btn.disabled=false}
+ };
+ update();
 }
