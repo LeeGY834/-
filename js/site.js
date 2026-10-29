@@ -11,6 +11,12 @@ async function load(){if(!configured){$('featured').innerHTML='<p class="muted">
  document.documentElement.style.setProperty('--page-bg',color(settings.theme_background,'#101010'));
  document.documentElement.style.setProperty('--surface-bg',color(settings.theme_surface,'#1d1d1d'));
  document.documentElement.style.setProperty('--text-main',color(settings.theme_text,'#f4eee3'));
+ const layoutNum=(key,fallback,min,max)=>{const n=Number(settings[key]);return settings[key]!==undefined&&Number.isFinite(n)?Math.max(min,Math.min(max,Math.round(n))):fallback};
+ const desktop=layoutNum('card_columns',4,1,6),mobile=layoutNum('card_mobile_columns',2,1,3);
+ const gap=layoutNum('card_gap',16,0,48),height=layoutNum('card_image_height',180,100,420),radius=layoutNum('card_radius',10,0,32);
+ let layoutStyle=document.getElementById('namchon-card-layout');
+ if(!layoutStyle){layoutStyle=document.createElement('style');layoutStyle.id='namchon-card-layout';document.head.append(layoutStyle)}
+ layoutStyle.textContent=`.cards{grid-template-columns:repeat(${desktop},minmax(0,1fr));gap:${gap}px}.cards .card{min-width:0;border-radius:${radius}px}.cards .card img{height:${height}px}@media(max-width:780px){.cards{grid-template-columns:repeat(${mobile},minmax(0,1fr))}.cards .card .details{padding:10px}.cards .card img{height:${Math.max(100,Math.round(height*.8))}px}}`;
  if(settings.seo_title)document.title=settings.seo_title;
  if(settings.seo_description){let meta=document.querySelector('meta[name="description"]');if(!meta){meta=document.createElement('meta');meta.name='description';document.head.append(meta)}meta.content=settings.seo_description}
  if(settings.footer_text)$('footer-text').textContent=settings.footer_text;
