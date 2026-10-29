@@ -1,6 +1,6 @@
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
 const cfg=window.NAMCHON_CONFIG;
-export const configured=!!(cfg?.SUPABASE_URL&&/^https:\/\/[^\s]+\.supabase\.co\/?$/.test(cfg.SUPABASE_URL)&&cfg?.SUPABASE_ANON_KEY&&!cfg.SUPABASE_ANON_KEY.startsWith('YOUR_'));
+export const configured = Boolean(cfg?.SUPABASE_URL?.startsWith('https://') &&cfg?.SUPABASE_ANON_KEY);
 export const db=configured?createClient(cfg.SUPABASE_URL,cfg.SUPABASE_ANON_KEY):null;
 export const categories=['한우','한돈','냉동상품','수입육','완제품'];
 export const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
