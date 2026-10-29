@@ -98,22 +98,45 @@ async function cardLayoutEditor(){
  const [settings,result]=await Promise.all([getSettings(),db.from('products').select('*').order('sort_order')]);
  if(result.error)throw result.error;
  const rows=result.data||[];
- const numeric=(key,def,min,max)=>{const n=Number(settings[key]);return settings[key]!==undefined&&Number.isFinite(n)?Math.min(max,Math.max(min,n)):def};
- const defaults={columns:numeric('card_columns',4,1,6),mobile:numeric('card_mobile_columns',2,1,3),gap:numeric('card_gap',16,0,48),image:numeric('card_image_height',180,100,420),radius:numeric('card_radius',10,0,32)};
- const groups=categories.map(cat=>({cat,items:rows.filter(p=>p.category===cat)}));
+ const num=(key,def,min,max)=>{const n=Number(settings[key]);return settings[key]!==undefined&&Number.isFinite(n)?Math.max(min,Math.min(max,Math.round(n))):def};
+ const defaults={columns:num('card_columns',4,1,6),mobile:num('card_mobile_columns',2,1,3),gap:num('card_gap',16,0,48),image:num('card_image_height',180,100,420),radius:num('card_radius',10,0,32)};
+ const groups=categories.map(cat=>({cat,items:rows.filter(p=>p.category===cat)})).filter(g=>g.items.length);
  const control=(key,label,min,max,unit)=>`<label class="field">${label}<div class="toolbar"><input data-layout="${key}" type="range" min="${min}" max="${max}" value="${defaults[key]}" style="flex:1"><output data-output="${key}">${defaults[key]}${unit}</output></div></label>`;
- $('editor').innerHTML=`<div class="stack"><p class="muted">상품 카드 크기와 간격, PC·모바일 열 수, 카테고리별 상품 순서를 한곳에서 조절합니다. '모두 저장'을 누르기 전까지 실제 홈페이지에는 적용되지 않습니다.</p><div class="toolbar"><button type="button" class="btn" id="layout-save">카드 디자인·순서 모두 저장</button><button type="button" class="btn alt" id="layout-reset">설정값 초기화</button></div><div class="panel stack"><h3>카드 크기·배치</h3>${control('columns','PC 한 줄 카드 개수',1,6,'개')}${control('mobile','모바일 한 줄 카드 개수',1,3,'개')}${control('gap','카드 사이 간격',0,48,'px')}${control('image','카드 사진 높이',100,420,'px')}${control('radius','카드 모서리 둥글기',0,32,'px')}</div><div class="panel stack"><h3>실시간 카드 미리보기</h3><p class="muted">아래는 샘플 미리보기이며, 실제 홈페이지에선 화면 폭에 따라 열 수가 제한될 수 있습니다.</p><div id="layout-preview" style="display:grid;gap:16px;max-width:100%;overflow:hidden">${rows.filter(p=>p.is_visible).slice(0,6).map(p=>`<article class="card">${p.image_url?`<img src="${esc(p.image_url)}" alt="" loading="lazy">`:'<div style="height:180px;background:#292929"></div>'}<div class="details"><strong>${esc(p.name)}</strong><p class="price">${esc(p.price_text||'가격 문의')}</p></div></article>`).join('')||'<p class="muted">등록된 상품이 없습니다.</p>'}</div></div><div class="stack"><h3>카테고리별 상품 순서</h3><p class="muted">↑ ↓ 버튼으로 상품의 자리를 바꾸세요. 같은 카테고리 안에서만 이동할 수 있습니다.</p>${groups.map(g=>`<div class="panel stack"><h3>${esc(g.cat)}</h3><div data-order-group="${esc(g.cat)}">${g.items.map(p=>`<div class="item-row" data-order-id="${esc(String(p.id))}"><span>${p.image_url?`<img src="${esc(p.image_url)}" alt="" style="width:48px;height:48px;object-fit:cover;vertical-align:middle;margin-right:8px">`:''}${esc(p.name)}${p.is_visible?'':' (숨김)'}</span><div class="toolbar"><button type="button" class="btn alt" data-move="up">↑</button><button type="button" class="btn alt" data-move="down">↓</button></div></div>`).join('')||'<p class="muted">등록된 상품이 없습니다.</p>'}</div></div>`).join('')}</div><p id="layout-info" class="muted"></p></div>`;
- const get=k=>Number($('editor').querySelector(`[data-layout="${k}"]`).value);
+ $('editor').innerHTML=`<div class="stack"><p class="muted">아래 상품 카드를 마우스로 끌어서 순서를 변경하세요. 슬라이더를 움직이면 카드 크기와 배치가 즉시 미리보기에 반영됩니다. 저장 전에는 실제 홈페이지가 바뀌지 않습니다.</p><div class="toolbar"><button type="button" class="btn" id="layout-save">변경 사항 모두 저장</button><button type="button" class="btn alt" id="layout-reset">크기 설정 초기화</button></div><div class="panel stack"><h3>화면 크기별 미리보기</h3><div class="toolbar"><button class="btn" id="layout-pc" type="button">PC 화면</button><button class="btn alt" id="layout-mobile" type="button">모바일 화면</button></div><p class="muted">모바일은 좁은 화면에서 열 개수와 사진 높이를 확인할 수 있습니다.</p></div><div class="panel stack"><h3>카드 크기·배치 조절</h3>${control('columns','PC 한 줄 카드 개수',1,6,'개')}${control('mobile','모바일 한 줄 카드 개수',1,3,'개')}${control('gap','카드 사이 간격',0,48,'px')}${control('image','카드 사진 높이',100,420,'px')}${control('radius','카드 모서리 둥글기',0,32,'px')}</div><div class="stack"><h3>실제 상품 카드 미리보기·자리 이동</h3><p class="muted">각 카테고리에서 카드를 끌어 다른 카드 위에 놓으면 순서가 바뀝니다. 카테고리 사이 이동은 지원하지 않습니다. 터치 기기에서는 ↑ ↓ 버튼을 이용하세요.</p><div id="layout-stage" style="width:100%;max-width:100%;margin:auto;transition:max-width .2s">${groups.map(g=>`<section class="panel stack"><h3>${esc(g.cat)}</h3><div class="layout-visual-grid" data-order-group="${esc(g.cat)}" style="display:grid;gap:16px">${g.items.map(p=>`<article class="card layout-draggable" draggable="true" data-order-id="${esc(String(p.id))}" style="min-width:0;overflow:hidden;cursor:grab;touch-action:pan-y" title="마우스로 끌어서 순서 변경">${p.image_url?`<img src="${esc(p.image_url)}" alt="${esc(p.name)}" draggable="false" loading="lazy" style="width:100%;object-fit:cover">`:'<div data-empty-image style="height:180px;background:#292929;display:grid;place-items:center;color:#aaa">사진 준비 중</div>'}<div class="details" style="padding:10px"><strong style="overflow-wrap:anywhere">${esc(p.name)}</strong><p class="price">${esc(p.price_text||'가격 문의')}</p>${!p.is_visible?'<p class="muted">숨김 상품 (고객 화면에 표시되지 않음)</p>':''}<div class="toolbar" style="margin-top:8px"><button type="button" class="btn alt" data-move="up" title="앞으로 이동">↑</button><button type="button" class="btn alt" data-move="down" title="뒤로 이동">↓</button></div></div></article>`).join('')}</div></section>`).join('')||'<p class="muted">등록된 상품이 없습니다.</p>'}</div></div><p id="layout-info" class="muted" role="status"></p></div>`;
+ const root=$('editor'),get=k=>Number(root.querySelector(`[data-layout="${k}"]`).value);
+ let mobileMode=false;
  const update=()=>{
-  for(const k of Object.keys(defaults))$('editor').querySelector(`[data-output="${k}"]`).textContent=get(k)+(k==='columns'||k==='mobile'?'개':'px');
-  const preview=$('layout-preview'),cols=Math.min(get('columns'),Math.max(1,Math.floor(preview.clientWidth/130)));
-  preview.style.gridTemplateColumns=`repeat(${cols},minmax(0,1fr))`;
-  preview.style.gap=get('gap')+'px';
-  preview.querySelectorAll('.card').forEach(el=>{el.style.borderRadius=get('radius')+'px';const img=el.querySelector('img');if(img)img.style.height=get('image')+'px'});
+  for(const k of Object.keys(defaults))root.querySelector(`[data-output="${k}"]`).textContent=get(k)+(k==='columns'||k==='mobile'?'개':'px');
+  const stage=$('layout-stage');stage.style.maxWidth=mobileMode?'390px':'100%';
+  for(const grid of root.querySelectorAll('.layout-visual-grid')){
+   grid.style.gridTemplateColumns=`repeat(${mobileMode?get('mobile'):get('columns')},minmax(0,1fr))`;
+   grid.style.gap=get('gap')+'px';
+   grid.querySelectorAll('.layout-draggable').forEach(el=>{
+    el.style.borderRadius=get('radius')+'px';
+    const img=el.querySelector('img'),empty=el.querySelector('[data-empty-image]');
+    if(img)img.style.height=(mobileMode?Math.max(100,Math.round(get('image')*.8)):get('image'))+'px';
+    if(empty)empty.style.height=(mobileMode?Math.max(100,Math.round(get('image')*.8)):get('image'))+'px';
+   });
+  }
+  $('layout-pc').className='btn '+(mobileMode?'alt':'');
+  $('layout-mobile').className='btn '+(mobileMode?'':'alt');
  };
- $('editor').querySelectorAll('[data-layout]').forEach(el=>el.addEventListener('input',update));
- $('layout-reset').onclick=()=>{for(const [k,v] of Object.entries({columns:4,mobile:2,gap:16,image:180,radius:10}))$('editor').querySelector(`[data-layout="${k}"]`).value=v;update()};
- $('editor').querySelectorAll('[data-move]').forEach(b=>b.onclick=()=>{const item=b.closest('[data-order-id]');if(b.dataset.move==='up'&&item.previousElementSibling?.hasAttribute('data-order-id'))item.parentElement.insertBefore(item,item.previousElementSibling);if(b.dataset.move==='down'&&item.nextElementSibling?.hasAttribute('data-order-id'))item.parentElement.insertBefore(item.nextElementSibling,item)});
+ root.querySelectorAll('[data-layout]').forEach(el=>el.addEventListener('input',update));
+ $('layout-pc').onclick=()=>{mobileMode=false;update()};
+ $('layout-mobile').onclick=()=>{mobileMode=true;update()};
+ $('layout-reset').onclick=()=>{for(const [k,v] of Object.entries({columns:4,mobile:2,gap:16,image:180,radius:10}))root.querySelector(`[data-layout="${k}"]`).value=v;update()};
+ root.querySelectorAll('[data-move]').forEach(b=>b.onclick=()=>{
+  const item=b.closest('[data-order-id]');
+  if(b.dataset.move==='up'&&item.previousElementSibling?.hasAttribute('data-order-id'))item.parentElement.insertBefore(item,item.previousElementSibling);
+  if(b.dataset.move==='down'&&item.nextElementSibling?.hasAttribute('data-order-id'))item.parentElement.insertBefore(item.nextElementSibling,item);
+ });
+ let dragging=null;
+ root.querySelectorAll('.layout-draggable').forEach(card=>{
+  card.addEventListener('dragstart',e=>{dragging=card;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',card.dataset.orderId);card.style.opacity='.5'});
+  card.addEventListener('dragend',()=>{card.style.opacity='1';dragging=null});
+  card.addEventListener('dragover',e=>{if(dragging&&dragging!==card&&dragging.parentElement===card.parentElement){e.preventDefault();e.dataTransfer.dropEffect='move'}});
+  card.addEventListener('drop',e=>{if(!dragging||dragging===card||dragging.parentElement!==card.parentElement)return;e.preventDefault();const rect=card.getBoundingClientRect();const before=e.clientY<rect.top+rect.height/2;card.parentElement.insertBefore(dragging,before?card:card.nextSibling)});
+ });
  $('layout-save').onclick=async()=>{
   if(!confirm('카드 디자인과 상품 순서를 실제 홈페이지에 저장할까요?'))return;
   const btn=$('layout-save'),info=$('layout-info');btn.disabled=true;info.textContent='저장 중...';
@@ -121,7 +144,7 @@ async function cardLayoutEditor(){
    const changes=[['card_columns',get('columns')],['card_mobile_columns',get('mobile')],['card_gap',get('gap')],['card_image_height',get('image')],['card_radius',get('radius')]].map(([key,value])=>({key,value:String(value)}));
    const {error}=await db.from('site_settings').upsert(changes,{onConflict:'key'});if(error)throw error;
    let index=1;
-   for(const group of $('editor').querySelectorAll('[data-order-group]')){
+   for(const group of root.querySelectorAll('[data-order-group]')){
     for(const el of group.querySelectorAll('[data-order-id]')){
      const row=rows.find(p=>String(p.id)===el.dataset.orderId);
      if(!row)throw Error('상품을 찾을 수 없습니다.');
@@ -130,7 +153,7 @@ async function cardLayoutEditor(){
     }
    }
    info.textContent='저장 성공! 고객 홈페이지를 새로고침해 확인하세요.';
-   status('카드 크기·배치·상품 순서 저장 완료');
+   status('시각적 카드 편집 저장 완료');
   }catch(e){info.textContent='저장 중 오류가 발생했습니다. 일부 변경이 적용됐을 수 있습니다: '+msg(e)}
   finally{btn.disabled=false}
  };
