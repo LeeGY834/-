@@ -102,9 +102,37 @@ async function cardLayoutEditor(){
  const defaults={columns:num('card_columns',4,1,6),mobile:num('card_mobile_columns',2,1,3),gap:num('card_gap',16,0,48),image:num('card_image_height',180,100,420),radius:num('card_radius',10,0,32)};
  const groups=categories.map(cat=>({cat,items:rows.filter(p=>p.category===cat)})).filter(g=>g.items.length);
  const control=(key,label,min,max,unit)=>`<label class="field">${label}<div class="toolbar"><input data-layout="${key}" type="range" min="${min}" max="${max}" value="${defaults[key]}" style="flex:1"><output data-output="${key}">${defaults[key]}${unit}</output></div></label>`;
- $('editor').innerHTML=`<div class="stack"><p class="muted">아래 상품 카드를 마우스로 끌어서 순서를 변경하세요. 슬라이더를 움직이면 카드 크기와 배치가 즉시 미리보기에 반영됩니다. 저장 전에는 실제 홈페이지가 바뀌지 않습니다.</p><div class="toolbar"><button type="button" class="btn" id="layout-save">변경 사항 모두 저장</button><button type="button" class="btn alt" id="layout-reset">크기 설정 초기화</button></div><div class="panel stack"><h3>화면 크기별 미리보기</h3><div class="toolbar"><button class="btn" id="layout-pc" type="button">PC 화면</button><button class="btn alt" id="layout-mobile" type="button">모바일 화면</button></div><p class="muted">모바일은 좁은 화면에서 열 개수와 사진 높이를 확인할 수 있습니다.</p></div><div class="panel stack"><h3>카드 크기·배치 조절</h3>${control('columns','PC 한 줄 카드 개수',1,6,'개')}${control('mobile','모바일 한 줄 카드 개수',1,3,'개')}${control('gap','카드 사이 간격',0,48,'px')}${control('image','카드 사진 높이',100,420,'px')}${control('radius','카드 모서리 둥글기',0,32,'px')}</div><div class="stack"><h3>실제 상품 카드 미리보기·자리 이동</h3><p class="muted">각 카테고리에서 카드를 끌어 다른 카드 위에 놓으면 순서가 바뀝니다. 카테고리 사이 이동은 지원하지 않습니다. 터치 기기에서는 ↑ ↓ 버튼을 이용하세요.</p><div id="layout-stage" style="width:100%;max-width:100%;margin:auto;transition:max-width .2s">${groups.map(g=>`<section class="panel stack"><h3>${esc(g.cat)}</h3><div class="layout-visual-grid" data-order-group="${esc(g.cat)}" style="display:grid;gap:16px">${g.items.map(p=>`<article class="card layout-draggable" draggable="true" data-order-id="${esc(String(p.id))}" style="min-width:0;overflow:hidden;cursor:grab;touch-action:pan-y" title="마우스로 끌어서 순서 변경">${p.image_url?`<img src="${esc(p.image_url)}" alt="${esc(p.name)}" draggable="false" loading="lazy" style="width:100%;object-fit:cover">`:'<div data-empty-image style="height:180px;background:#292929;display:grid;place-items:center;color:#aaa">사진 준비 중</div>'}<div class="details" style="padding:10px"><strong style="overflow-wrap:anywhere">${esc(p.name)}</strong><p class="price">${esc(p.price_text||'가격 문의')}</p>${!p.is_visible?'<p class="muted">숨김 상품 (고객 화면에 표시되지 않음)</p>':''}<div class="toolbar" style="margin-top:8px"><button type="button" class="btn alt" data-move="up" title="앞으로 이동">↑</button><button type="button" class="btn alt" data-move="down" title="뒤로 이동">↓</button></div></div></article>`).join('')}</div></section>`).join('')||'<p class="muted">등록된 상품이 없습니다.</p>'}</div></div><p id="layout-info" class="muted" role="status"></p></div>`;
+ $('editor').innerHTML=`<div class="stack"><p class="muted">아래 상품 카드를 마우스로 끌어서 순서를 변경하세요. 슬라이더를 움직이면 카드 크기와 배치가 즉시 미리보기에 반영됩니다. 저장 전에는 실제 홈페이지가 바뀌지 않습니다.</p><div class="toolbar"><button type="button" class="btn" id="layout-save">변경 사항 모두 저장</button><button type="button" class="btn alt" id="layout-reset">크기 설정 초기화</button></div><div class="panel stack"><h3>실제 고객 홈페이지 미리보기</h3><div class="toolbar"><button class="btn" id="layout-pc" type="button">PC 화면</button><button class="btn alt" id="layout-mobile" type="button">모바일 화면</button></div><p class="muted">아래에는 실제 고객 홈페이지가 표시됩니다. 카드 설정을 바꾸면 저장 전에 화면에 반영됩니다.</p><div style="overflow:auto;width:100%;text-align:center"><iframe id="layout-live-frame" title="실제 홈페이지 PC 모바일 미리보기" src="index.html" style="width:100%;max-width:100%;height:720px;border:2px solid #888;border-radius:10px;background:#101010;transition:width .2s"></iframe></div></div><div class="panel stack"><h3>카드 크기·배치 조절</h3>${control('columns','PC 한 줄 카드 개수',1,6,'개')}${control('mobile','모바일 한 줄 카드 개수',1,3,'개')}${control('gap','카드 사이 간격',0,48,'px')}${control('image','카드 사진 높이',100,420,'px')}${control('radius','카드 모서리 둥글기',0,32,'px')}</div><div class="stack"><h3>실제 상품 카드 미리보기·자리 이동</h3><p class="muted">각 카테고리에서 카드를 끌어 다른 카드 위에 놓으면 순서가 바뀝니다. 카테고리 사이 이동은 지원하지 않습니다. 터치 기기에서는 ↑ ↓ 버튼을 이용하세요.</p><div id="layout-stage" style="width:100%;max-width:100%;margin:auto;transition:max-width .2s">${groups.map(g=>`<section class="panel stack"><h3>${esc(g.cat)}</h3><div class="layout-visual-grid" data-order-group="${esc(g.cat)}" style="display:grid;gap:16px">${g.items.map(p=>`<article class="card layout-draggable" draggable="true" data-order-id="${esc(String(p.id))}" style="min-width:0;overflow:hidden;cursor:grab;touch-action:pan-y" title="마우스로 끌어서 순서 변경">${p.image_url?`<img src="${esc(p.image_url)}" alt="${esc(p.name)}" draggable="false" loading="lazy" style="width:100%;object-fit:cover">`:'<div data-empty-image style="height:180px;background:#292929;display:grid;place-items:center;color:#aaa">사진 준비 중</div>'}<div class="details" style="padding:10px"><strong style="overflow-wrap:anywhere">${esc(p.name)}</strong><p class="price">${esc(p.price_text||'가격 문의')}</p>${!p.is_visible?'<p class="muted">숨김 상품 (고객 화면에 표시되지 않음)</p>':''}<div class="toolbar" style="margin-top:8px"><button type="button" class="btn alt" data-move="up" title="앞으로 이동">↑</button><button type="button" class="btn alt" data-move="down" title="뒤로 이동">↓</button></div></div></article>`).join('')}</div></section>`).join('')||'<p class="muted">등록된 상품이 없습니다.</p>'}</div></div><p id="layout-info" class="muted" role="status"></p></div>`;
  const root=$('editor'),get=k=>Number(root.querySelector(`[data-layout="${k}"]`).value);
  let mobileMode=false;
+ const previewFrame=$('layout-live-frame');
+ let previewReady=false;
+ const syncLive=()=>{
+  if(!previewReady)return;
+  try{
+   const doc=previewFrame.contentDocument;
+   if(!doc||!doc.head)return;
+   let style=doc.getElementById('namchon-admin-live-layout');
+   if(!style){style=doc.createElement('style');style.id='namchon-admin-live-layout';doc.head.append(style)}
+   const cols=mobileMode?get('mobile'):get('columns');
+   const imgHeight=mobileMode?Math.max(100,Math.round(get('image')*.8)):get('image');
+   style.textContent=`.cards{grid-template-columns:repeat(${cols},minmax(0,1fr))!important;gap:${get('gap')}px!important}.cards .card{min-width:0;border-radius:${get('radius')}px!important;overflow:hidden}.cards .card img{height:${imgHeight}px!important;object-fit:cover}`;
+   for(const group of root.querySelectorAll('[data-order-group]')){
+    const cat=group.dataset.orderGroup;
+    const section=[...doc.querySelectorAll('[data-cat]')].find(el=>el.dataset.cat===cat);
+    if(!section)continue;
+    const cards=[...section.querySelectorAll(':scope > .card')];
+    const byName=new Map(cards.map(el=>[el.querySelector('.details strong')?.textContent?.trim(),el]));
+    for(const el of group.querySelectorAll('[data-order-id]')){
+     const product=rows.find(p=>String(p.id)===el.dataset.orderId);
+     if(!product)continue;
+     const card=byName.get(product.name);
+     if(card)section.appendChild(card);
+    }
+   }
+  }catch(e){$('layout-info').textContent='미리보기를 조정할 수 없습니다: '+msg(e)}
+ };
+ previewFrame.addEventListener('load',()=>{previewReady=true;syncLive();const doc=previewFrame.contentDocument;if(doc){const watch=doc.getElementById('product-sections');if(watch){const observer=new MutationObserver(()=>{observer.disconnect();syncLive()});observer.observe(watch,{childList:true,subtree:true})}}});
  const update=()=>{
   for(const k of Object.keys(defaults))root.querySelector(`[data-output="${k}"]`).textContent=get(k)+(k==='columns'||k==='mobile'?'개':'px');
   const stage=$('layout-stage');stage.style.maxWidth=mobileMode?'390px':'100%';
@@ -120,6 +148,8 @@ async function cardLayoutEditor(){
   }
   $('layout-pc').className='btn '+(mobileMode?'alt':'');
   $('layout-mobile').className='btn '+(mobileMode?'':'alt');
+  previewFrame.style.width=mobileMode?'390px':'100%';
+  syncLive();
  };
  root.querySelectorAll('[data-layout]').forEach(el=>el.addEventListener('input',update));
  $('layout-pc').onclick=()=>{mobileMode=false;update()};
@@ -135,7 +165,7 @@ async function cardLayoutEditor(){
   card.addEventListener('dragstart',e=>{dragging=card;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',card.dataset.orderId);card.style.opacity='.5'});
   card.addEventListener('dragend',()=>{card.style.opacity='1';dragging=null});
   card.addEventListener('dragover',e=>{if(dragging&&dragging!==card&&dragging.parentElement===card.parentElement){e.preventDefault();e.dataTransfer.dropEffect='move'}});
-  card.addEventListener('drop',e=>{if(!dragging||dragging===card||dragging.parentElement!==card.parentElement)return;e.preventDefault();const rect=card.getBoundingClientRect();const before=e.clientY<rect.top+rect.height/2;card.parentElement.insertBefore(dragging,before?card:card.nextSibling)});
+  card.addEventListener('drop',e=>{if(!dragging||dragging===card||dragging.parentElement!==card.parentElement)return;e.preventDefault();const rect=card.getBoundingClientRect();const before=e.clientY<rect.top+rect.height/2;card.parentElement.insertBefore(dragging,before?card:card.nextSibling);syncLive()});
  });
  $('layout-save').onclick=async()=>{
   if(!confirm('카드 디자인과 상품 순서를 실제 홈페이지에 저장할까요?'))return;
