@@ -41,3 +41,17 @@ async function load(){if(!configured){$('featured').innerHTML='<p class="muted">
  popupImage.style.objectFit=settings.popup_image_fit==='contain'?'contain':'cover';
  $('popup-title').textContent=pop.title;$('popup-body').textContent=pop.body||'';if(pop.image_url){$('popup-image').src=pop.image_url;$('popup-image').classList.remove('hidden')}$('popup-overlay').classList.remove('hidden')}}catch(e){$('featured').textContent='데이터를 불러오지 못했습니다: '+e.message}}
 $('popup-close').onclick=()=>$('popup-overlay').classList.add('hidden');load();
+
+// Privacy-conscious anonymous visit counting. One session token per browser tab/day.
+(async function trackNamchonVisit(){
+ if(!configured)return;
+ try{
+  const date=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  const storageKey='namchon-visit-'+date;
+  let token=sessionStorage.getItem(storageKey);
+  if(!token){token=crypto.randomUUID();sessionStorage.setItem(storageKey,token)}
+  // Once per page load. Server keeps a separate page-view event and deduplicates unique tokens per day.
+  const {error}=await db.rpc('namchon_record_visit',{p_token:token});
+  if(error)console.warn('방문 기록을 저장하지 못했습니다. 통계 SQL 설정을 확인하세요.');
+ }catch(e){/* Browsers may block session storage; website still works. */}
+})();
