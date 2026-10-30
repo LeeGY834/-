@@ -1,6 +1,6 @@
 import {db,configured,categories,esc,getSettings,msg} from './common.js';
 const $=id=>document.getElementById(id);let active='products';let currentUser=null;
-const tabs=[['products','상품 관리'],['settings','홈페이지·매장 정보'],['design','디자인·화면 설정'],['notices','행사·공지사항'],['popups','행사 팝업'],['code','고급 코드 편집'],['visual','화면 보면서 편집'],['layout','카드 배치·크기·순서'],['categoryManager','카테고리 관리']];
+const tabs=[['products','상품 관리'],['settings','홈페이지·매장 정보'],['design','디자인·화면 설정'],['notices','행사·공지사항'],['popups','행사 팝업'],['code','고급 코드 편집'],['visual','화면 보면서 편집'],['layout','카드 배치·크기·순서'],['categoryManager','카테고리 관리'],['visitors','방문자 통계']];
 const status=s=>$('status').textContent=s;
 const input=(key,label,value='',type='text')=>`<label class="field">${label}<input name="${key}" type="${type}" value="${esc(value)}"></label>`;
 const area=(key,label,value='')=>`<label class="field">${label}<textarea name="${key}" rows="3">${esc(value)}</textarea></label>`;
@@ -11,7 +11,7 @@ async function show(){if(!configured){status('먼저 js/config.js에 Supabase �
 $('login-btn').onclick=async()=>{if(!configured)return status('Supabase 연결 설정이 필요합니다.');const {error}=await db.auth.signInWithPassword({email:$('email').value,password:$('password').value});if(error)return status(msg(error));if(!(await authorized())){await db.auth.signOut();return status('관리자 권한이 없는 계정입니다.')}show()};
 $('logout').onclick=async()=>{await db.auth.signOut();currentUser=null;show()};
 async function upload(file,bucket){if(!file||!file.size)return null;if(!file.type.startsWith('image/'))throw Error('이미지 파일만 업로드할 수 있습니다.');if(file.size>5*1024*1024)throw Error('이미지는 5MB 이하로 업로드하세요.');const path=`${currentUser.id}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;const {error}=await db.storage.from(bucket).upload(path,file,{contentType:file.type});if(error)throw error;return db.storage.from(bucket).getPublicUrl(path).data.publicUrl}
-async function render(){try{if(active==='products')await products();if(active==='settings')await settings();if(active==='design')await design();if(active==='notices')await entries('notices');if(active==='popups')await entries('popups');if(active==='code')await codeEditor();if(active==='visual')await visualEditor();if(active==='layout')await cardLayoutEditor();if(active==='categoryManager')await categoryManager()}catch(e){status('오류: '+msg(e))}}
+async function render(){try{if(active==='products')await products();if(active==='settings')await settings();if(active==='design')await design();if(active==='notices')await entries('notices');if(active==='popups')await entries('popups');if(active==='code')await codeEditor();if(active==='visual')await visualEditor();if(active==='layout')await cardLayoutEditor();if(active==='categoryManager')await categoryManager();if(active==='visitors')await visitorDashboard()}catch(e){status('오류: '+msg(e))}}
 async function products(){const {data,error}=await db.from('products').select('*').order('sort_order');if(error)throw error;const rows=data||[];const categoryNames=await loadCategoryNames();$('editor').innerHTML=`<div class="stack"><button class="btn" id="new-item">+ 새 상품</button><div id="product-form"></div><div>${rows.map(p=>`<div class="item-row"><span>${esc(p.category)} · ${esc(p.name)} <span class="gold">${esc(p.price_text)}</span></span><div class="toolbar"><button class="btn alt" data-edit="${p.id}">수정</button><button class="btn alt" data-delete="${p.id}">삭제</button></div></div>`).join('')}</div></div>`;const edit=p=>{$('product-form').innerHTML=`<form class="stack" id="edit-product"><h3>${p.id?'상품 수정':'새 상품'}</h3>${input('name','상품명',p.name)}<label class="field">카테고리<select name="category">${[...new Set([...categoryNames,p.category].filter(Boolean))].map(c=>`<option ${c===p.category?'selected':''}>${esc(c)}</option>`).join('')}</select></label>${input('price_text','가격 문구',p.price_text)}${area('description','설명',p.description)}${input('sort_order','정렬 순서',p.sort_order??0,'number')}<label class="field">상품 사진 업로드<input name="photo" type="file" accept="image/*"></label>${p.image_url?`<img src="${esc(p.image_url)}" alt="현재 사진" style="max-width:160px">`:''}${check('featured','메인 추천 상품',p.is_featured)}${check('visible','고객에게 표시',p.is_visible??true)}${check('sold_out','품절',p.is_sold_out)}<button class="btn" type="submit">이 상품 저장</button></form>`;$('edit-product').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget,d=formData(f);try{const image=await upload(f.elements.photo.files[0],'product-images');const payload={name:d.name.trim(),category:d.category,price_text:d.price_text,description:d.description,sort_order:Number(d.sort_order)||0,is_featured:f.elements.featured.checked,is_visible:f.elements.visible.checked,is_sold_out:f.elements.sold_out.checked};if(image)payload.image_url=image;if(!payload.name)throw Error('상품명을 입력하세요.');const q=p.id?db.from('products').update(payload).eq('id',p.id):db.from('products').insert(payload);const {error}=await q;if(error)throw error;status('상품이 저장되었습니다.');await products()}catch(err){status('저장 실패: '+msg(err))}}};$('new-item').onclick=()=>edit({category:categoryNames[0]||'한우',is_visible:true});document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>edit(rows.find(p=>p.id===b.dataset.edit)));document.querySelectorAll('[data-delete]').forEach(b=>b.onclick=async()=>{if(!confirm('이 상품을 삭제할까요?'))return;const {error}=await db.from('products').delete().eq('id',b.dataset.delete);if(error)return status(msg(error));products()})}
 async function settings(){const values=await getSettings();const fields=[['hero_title','메인 배너 제목'],['hero_desc','메인 배너 설명'],['intro','매장 소개'],['address','매장 주소'],['hours','영업시간'],['parking','주차 안내'],['phone','전화번호']];$('editor').innerHTML=`<form id="settings-form" class="stack">${fields.map(([k,n])=>area(k,n,values[k]||'')).join('')}<label class="field">메인 배너 이미지<input name="hero_file" type="file" accept="image/*"></label>${values.hero_image?`<img src="${esc(values.hero_image)}" style="max-width:300px" alt="현재 배너">`:''}<button class="btn">설정 저장</button></form>`;$('settings-form').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget;try{const changes=fields.map(([key])=>({key,value:f.elements[key].value}));const image=await upload(f.elements.hero_file.files[0],'product-images');if(image)changes.push({key:'hero_image',value:image});const {error}=await db.from('site_settings').upsert(changes,{onConflict:'key'});if(error)throw error;status('홈페이지 설정을 저장했습니다.');settings()}catch(err){status(msg(err))}}}
 async function design(){
@@ -260,4 +260,32 @@ async function categoryManager(){
   }
  };
  $('category-save').onclick=async()=>{try{await save()}catch(e){status(msg(e))}};
+}
+
+async function visitorDashboard(){
+ const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+ $('editor').innerHTML=`<div class="stack"><p class="muted">한국 시간(KST) 기준입니다. 오늘 방문자와 선택한 날짜의 방문자를 확인합니다. 방문자는 같은 브라우저에서 하루 한 번 방문한 경우를 기준으로 추정하며, 기기·브라우저가 다르면 각각 계산됩니다.</p><div class="panel stack"><h3>오늘 방문 현황</h3><div class="toolbar"><div class="panel"><span class="muted">오늘 방문자(브라우저 기준)</span><h2 id="visitor-today-unique">-</h2></div><div class="panel"><span class="muted">오늘 페이지 조회수</span><h2 id="visitor-today-views">-</h2></div></div></div><form id="visitor-search" class="panel stack"><h3>날짜별 방문자 조회</h3><div class="toolbar"><label class="field">시작 날짜<input id="visitor-start" type="date" value="${today}" required></label><label class="field">종료 날짜<input id="visitor-end" type="date" value="${today}" required></label></div><button class="btn" type="submit">방문자 조회</button></form><div class="panel stack"><h3>날짜별 통계</h3><div id="visitor-result" class="muted">조회 중...</div></div><p class="muted">설치 전 기록은 확인할 수 없습니다. 광고 차단·비공개 브라우징·쿠키 및 저장소 제한 등으로 실제 방문과 차이가 날 수 있습니다.</p></div>`;
+ const query=async(start,end)=>{
+  const result=$('visitor-result');result.textContent='불러오는 중...';
+  if(start>end){result.textContent='시작 날짜가 종료 날짜보다 늦습니다.';return}
+  const days=Math.round((Date.parse(end+'T00:00:00Z')-Date.parse(start+'T00:00:00Z'))/86400000)+1;
+  if(days>366){result.textContent='한 번에 최대 366일까지 조회할 수 있습니다.';return}
+  try{
+   const [todayResponse,rangeResponse]=await Promise.all([
+    db.rpc('namchon_visit_stats',{p_start:today,p_end:today}),
+    db.rpc('namchon_visit_stats',{p_start:start,p_end:end})
+   ]);
+   if(todayResponse.error)throw todayResponse.error;
+   if(rangeResponse.error)throw rangeResponse.error;
+   const todayRow=(todayResponse.data||[])[0]||{};
+   $('visitor-today-unique').textContent=Number(todayRow.unique_visitors||0).toLocaleString('ko-KR')+'명';
+   $('visitor-today-views').textContent=Number(todayRow.page_views||0).toLocaleString('ko-KR')+'회';
+   const data=rangeResponse.data||[];
+   const sumUnique=data.reduce((n,r)=>n+Number(r.unique_visitors||0),0);
+   const sumViews=data.reduce((n,r)=>n+Number(r.page_views||0),0);
+   result.innerHTML=`<p><strong>기간 내 일별 방문자 합계 ${sumUnique.toLocaleString('ko-KR')}명</strong> · 페이지 조회 ${sumViews.toLocaleString('ko-KR')}회</p><p class="muted">일별 방문자 합계는 기간 전체의 중복 제거 방문자 수와 다릅니다.</p><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;text-align:left"><thead><tr><th>날짜</th><th>방문자</th><th>조회수</th></tr></thead><tbody>${data.map(r=>`<tr><td style="padding:8px">${esc(r.visit_date)}</td><td>${Number(r.unique_visitors||0).toLocaleString('ko-KR')}명</td><td>${Number(r.page_views||0).toLocaleString('ko-KR')}회</td></tr>`).join('')||'<tr><td colspan="3">기록이 없습니다.</td></tr>'}</tbody></table></div>`;
+  }catch(e){result.textContent='통계 조회 실패: '+msg(e)+' — Supabase SQL 설치 여부를 확인하세요.'}
+ };
+ $('visitor-search').onsubmit=e=>{e.preventDefault();query($('visitor-start').value,$('visitor-end').value)};
+ query(today,today);
 }
