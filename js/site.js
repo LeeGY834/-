@@ -1,42 +1,96 @@
 import {db,configured,categories,esc,getSettings} from './common.js';
 const $=id=>document.getElementById(id);
-const nav=[['홈','#home'],['남촌축산백화점 소개','#intro'],...categories.map(c=>[c,'#cat-'+encodeURIComponent(c)]),['행사·공지사항','#notices'],['매장 안내','#store']];
-$('nav').innerHTML=nav.map(([n,u])=>`<a href="${u}">${esc(n)}</a>`).join('');
-$('categories').innerHTML=categories.map(c=>`<a class="category" data-category="${esc(c)}" href="#cat-${encodeURIComponent(c)}">${esc(c)}</a>`).join('');
-$('product-sections').innerHTML=categories.map(c=>`<section class="section" id="cat-${encodeURIComponent(c)}"><h2>${esc(c)}</h2><div class="cards" data-cat="${esc(c)}"></div></section>`).join('');
+const defaultCategories=[...categories];
+function categoryList(settings,products){
+ let names=defaultCategories;
+ try{const saved=JSON.parse(settings.custom_categories||'null');if(Array.isArray(saved))names=saved.filter(x=>typeof x==='string'&&x.trim()).map(x=>x.trim())}catch(e){}
+ return [...new Set([...names,...products.map(p=>p.category).filter(Boolean)])];
+}
+function renderCategories(names){
+ const nav=[['홈','#home'],['남촌축산백화점 소개','#intro'],...names.map(c=>[c,'#cat-'+encodeURIComponent(c)]),['행사·공지사항','#notices'],['매장 안내','#store']];
+ $('nav').innerHTML=nav.map(([n,u])=>`<a href="${u}">${esc(n)}</a>`).join('');
+ $('categories').innerHTML=names.map(c=>`<a class="category" data-category="${esc(c)}" href="#cat-${encodeURIComponent(c)}">${esc(c)}</a>`).join('');
+ $('product-sections').innerHTML=names.map(c=>`<section class="section" id="cat-${encodeURIComponent(c)}"><h2>${esc(c)}</h2><div class="cards" data-cat="${esc(c)}"></div></section>`).join('');
+}
+renderCategories(defaultCategories);
 function card(p){return `<article class="card">${p.image_url?`<img src="${esc(p.image_url)}" alt="${esc(p.name)}" loading="lazy">`:'<div style="height:180px;background:#292929;display:grid;place-items:center;color:#999">사진 준비 중</div>'}<div class="details"><strong>${esc(p.name)}</strong><p class="price">${esc(p.price_text||'가격 문의')}</p><p class="muted">${esc(p.description||'')}</p>${p.is_sold_out?'<span class="gold">품절</span>':''}</div></article>`}
-async function load(){if(!configured){for(const [id,key] of [['hero-title','hero_title'],['hero-desc','hero_desc'],['intro-text','intro'],['footer-text','footer_text']]){if(settings['rich_'+key])renderRich(id,settings['rich_'+key]);}
- $('featured').innerHTML='<p class="muted">관리자 설정 후 상품이 표시됩니다.</p>';return}try{const [settings,productsResult,noticesResult,popupResult]=await Promise.all([getSettings(),db.from('products').select('*').eq('is_visible',true).order('sort_order'),db.from('notices').select('*').eq('visible',true).order('created_at',{ascending:false}),db.from('popups').select('*').eq('enabled',true).order('created_at',{ascending:false}).limit(1)]);for(const r of [productsResult,noticesResult,popupResult])if(r.error)throw r.error;const products=productsResult.data||[];
+async function load(){if(!configured){$('featured').innerHTML='<p class="muted">관리자 설정 후 상품이 표시됩니다.</p>';return}try{const [settings,productsResult,noticesResult,popupResult]=await Promise.all([getSettings(),db.from('products').select('*').eq('is_visible',true).order('sort_order'),db.from('notices').select('*').eq('visible',true).order('created_at',{ascending:false}),db.from('popups').select('*').eq('enabled',true).order('created_at',{ascending:false}).limit(1)]);for(const r of [productsResult,noticesResult,popupResult])if(r.error)throw r.error;const products=productsResult.data||[];const categoryNames=categoryList(settings,products);renderCategories(categoryNames);
  const color=(v,d)=>/^#[0-9a-fA-F]{6}$/.test(v||'')?v:d;
  document.documentElement.style.setProperty('--accent',color(settings.theme_accent,'#d8b574'));
  document.documentElement.style.setProperty('--page-bg',color(settings.theme_background,'#101010'));
  document.documentElement.style.setProperty('--surface-bg',color(settings.theme_surface,'#1d1d1d'));
  document.documentElement.style.setProperty('--text-main',color(settings.theme_text,'#f4eee3'));
+ const layoutNum=(key,fallback,min,max)=>{const n=Number(settings[key]);return settings[key]!==undefined&&Number.isFinite(n)?Math.max(min,Math.min(max,Math.round(n))):fallback};
+ const desktop=layoutNum('card_columns',4,1,6),mobile=layoutNum('card_mobile_columns',2,1,3);
+ const gap=layoutNum('card_gap',16,0,48),height=layoutNum('card_image_height',180,100,420),radius=layoutNum('card_radius',10,0,32);
+ let layoutStyle=document.getElementById('namchon-card-layout');
+ if(!layoutStyle){layoutStyle=document.createElement('style');layoutStyle.id='namchon-card-layout';document.head.append(layoutStyle)}
+ layoutStyle.textContent=`.cards{grid-template-columns:repeat(${desktop},minmax(0,1fr));gap:${gap}px}.cards .card{min-width:0;border-radius:${radius}px}.cards .card img{height:${height}px}@media(max-width:780px){.cards{grid-template-columns:repeat(${mobile},minmax(0,1fr))}.cards .card .details{padding:10px}.cards .card img{height:${Math.max(100,Math.round(height*.8))}px}}`;
  if(settings.seo_title)document.title=settings.seo_title;
  if(settings.seo_description){let meta=document.querySelector('meta[name="description"]');if(!meta){meta=document.createElement('meta');meta.name='description';document.head.append(meta)}meta.content=settings.seo_description}
  if(settings.footer_text)$('footer-text').textContent=settings.footer_text;
  const visible=(id,key)=>{const el=$(id);if(el)el.classList.toggle('hidden',settings[key]==='false')};
  for(const [id,key] of [['hero-title','show_hero_title'],['hero-desc','show_hero_desc'],['hero-label','show_hero_label'],['categories-section','show_categories'],['featured-section','show_featured'],['intro','show_intro'],['notices','show_notices'],['store','show_store']])visible(id,key);
- for(const c of categories){const el=document.getElementById('cat-'+encodeURIComponent(c));if(el)el.classList.toggle('hidden',settings['show_cat_'+c]==='false');const link=document.querySelector(`.category[data-category="${c}"]`);if(link)link.classList.toggle('hidden',settings['show_cat_'+c]==='false')}
- if(settings.hero_height){const h=Number(settings.hero_height);if(Number.isFinite(h)&&h>=220&&h<=750)$('home').style.minHeight=h+'px'}$('hero-title').textContent=settings.hero_title||'좋은 고기, 남다른 품질';$('hero-desc').textContent=settings.hero_desc||'남촌축산백화점의 다양한 상품을 만나보세요.';if(settings.hero_image)$('home').style.backgroundImage=`linear-gradient(#0008,#0009),url("${encodeURI(settings.hero_image)}")`;$('intro-text').textContent=settings.intro||'남촌축산백화점에 오신 것을 환영합니다.';$('featured').innerHTML=products.filter(x=>x.is_featured).map(card).join('')||'<p class="muted">추천 상품을 준비 중입니다.</p>';for(const c of categories){document.querySelectorAll('[data-cat]').forEach(el=>{if(el.dataset.cat===c)el.innerHTML=products.filter(p=>p.category===c).map(card).join('')||'<p class="muted">상품을 준비 중입니다.</p>'})}$('notice-list').innerHTML=(noticesResult.data||[]).map(n=>`<div class="notice"><strong>${esc(n.title)}</strong><p>${esc(n.body)}</p></div>`).join('')||'<p class="muted">등록된 공지사항이 없습니다.</p>';$('store-details').innerHTML=`<p>주소: ${esc(settings.address||'등록 예정')}</p><p>영업시간: ${esc(settings.hours||'등록 예정')}</p><p>주차 안내: ${esc(settings.parking||'등록 예정')}</p>${settings.phone?`<a class="btn" href="tel:${esc(settings.phone.replace(/[^\d+]/g,''))}">전화 문의 ${esc(settings.phone)}</a>`:''}`;const pop=(popupResult.data||[])[0];if(pop&&(!pop.starts_at||new Date(pop.starts_at)<=new Date())&&(!pop.ends_at||new Date(pop.ends_at)>=new Date())){$('popup-title').textContent=pop.title;$('popup-body').textContent=pop.body||'';if(pop.image_url){$('popup-image').src=pop.image_url;$('popup-image').classList.remove('hidden')}$('popup-overlay').classList.remove('hidden')}}catch(e){$('featured').textContent='데이터를 불러오지 못했습니다: '+e.message}}
+ for(const c of categoryNames){const el=document.getElementById('cat-'+encodeURIComponent(c));if(el)el.classList.toggle('hidden',settings['show_cat_'+c]==='false');const link=document.querySelector(`.category[data-category="${c}"]`);if(link)link.classList.toggle('hidden',settings['show_cat_'+c]==='false')}
+ if(settings.hero_height){const h=Number(settings.hero_height);if(Number.isFinite(h)&&h>=220&&h<=750)$('home').style.minHeight=h+'px'}$('hero-title').textContent=settings.hero_title||'좋은 고기, 남다른 품질';$('hero-desc').textContent=settings.hero_desc||'남촌축산백화점의 다양한 상품을 만나보세요.';if(settings.hero_image)$('home').style.backgroundImage=`linear-gradient(#0008,#0009),url("${encodeURI(settings.hero_image)}")`;$('intro-text').textContent=settings.intro||'남촌축산백화점에 오신 것을 환영합니다.';$('featured').innerHTML=products.filter(x=>x.is_featured).map(card).join('')||'<p class="muted">추천 상품을 준비 중입니다.</p>';for(const c of categoryNames){document.querySelectorAll('[data-cat]').forEach(el=>{if(el.dataset.cat===c)el.innerHTML=products.filter(p=>p.category===c).map(card).join('')||'<p class="muted">상품을 준비 중입니다.</p>'})}$('notice-list').innerHTML=(noticesResult.data||[]).map(n=>`<div class="notice"><strong>${esc(n.title)}</strong><p>${esc(n.body)}</p></div>`).join('')||'<p class="muted">등록된 공지사항이 없습니다.</p>';$('store-details').innerHTML=`<p>주소: ${esc(settings.address||'등록 예정')}</p><p>영업시간: ${esc(settings.hours||'등록 예정')}</p><p>주차 안내: ${esc(settings.parking||'등록 예정')}</p>${settings.phone?`<a class="btn" href="tel:${esc(settings.phone.replace(/[^\d+]/g,''))}">전화 문의 ${esc(settings.phone)}</a>`:''}`;const pop=(popupResult.data||[])[0];if(pop&&(!pop.starts_at||new Date(pop.starts_at)<=new Date())&&(!pop.ends_at||new Date(pop.ends_at)>=new Date())){const popupBox=$('popup-box'),popupImage=$('popup-image');
+ const popupNum=(key,def,min,max)=>{const v=Number(settings[key]);return Number.isFinite(v)&&v>=min&&v<=max?v:def};
+ popupBox.style.maxWidth=popupNum('popup_width',470,240,900)+'px';
+ popupBox.style.borderRadius=popupNum('popup_radius',12,0,40)+'px';
+ popupImage.style.maxHeight='none';
+ popupImage.style.height=popupNum('popup_image_height',250,80,650)+'px';
+ popupImage.style.objectFit=settings.popup_image_fit==='contain'?'contain':'cover';
+ $('popup-title').textContent=pop.title;$('popup-body').textContent=pop.body||'';if(pop.image_url){$('popup-image').src=pop.image_url;$('popup-image').classList.remove('hidden')}$('popup-overlay').classList.remove('hidden')}}catch(e){$('featured').textContent='데이터를 불러오지 못했습니다: '+e.message}}
+$('popup-close').onclick=()=>$('popup-overlay').classList.add('hidden');load().then(initRichText).catch(console.error);
 
-function renderRich(target,html){
- const doc=new DOMParser().parseFromString('<div>'+html+'</div>','text/html');
- const allowed=new Set(['P','DIV','BR','STRONG','B','EM','I','U','SPAN','H2','H3','UL','OL','LI']);
- function clean(node){
-  if(node.nodeType===Node.TEXT_NODE)return document.createTextNode(node.textContent||'');
-  if(node.nodeType!==Node.ELEMENT_NODE)return document.createDocumentFragment();
-  const el=document.createElement(allowed.has(node.tagName)?node.tagName.toLowerCase():'span');
-  if(['SPAN','DIV','P'].includes(node.tagName)){
-   const st=node.style;
-   if(/^#[0-9a-f]{3,8}$/i.test(st.color)||/^rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)$/i.test(st.color))el.style.color=st.color;
-   const size=parseInt(st.fontSize,10);if(/^\d+px$/.test(st.fontSize)&&size>=10&&size<=72)el.style.fontSize=size+'px';
-   if(['bold','700','800','900'].includes(st.fontWeight))el.style.fontWeight='bold';
-   if(['center','left','right'].includes(st.textAlign))el.style.textAlign=st.textAlign;
-  }
-  [...node.childNodes].forEach(n=>el.append(clean(n)));return el;
- }
- const dest=document.getElementById(target);if(!dest)return;dest.replaceChildren();[...doc.body.firstElementChild.childNodes].forEach(n=>dest.append(clean(n)));
+// Anonymous, first-party analytics. No IP address or full referrer URL is stored.
+(async function trackNamchonVisit(){
+ if(!configured||navigator.doNotTrack==='1'||navigator.globalPrivacyControl===true)return;
+ try{
+  const day=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  const key='namchon-visit-'+day;
+  let token=sessionStorage.getItem(key);
+  if(!token){token=crypto.randomUUID();sessionStorage.setItem(key,token)}
+  const params=new URLSearchParams(location.search);
+  const clean=s=>String(s||'').slice(0,100).replace(/[\r\n\t]/g,' ');
+  let host='';try{host=new URL(document.referrer).hostname.toLowerCase().slice(0,120)}catch(_){}
+  const searchEngine=/^(www\.)?(google\.|naver\.com$|search\.naver\.com$|daum\.net$|search\.daum\.net$|bing\.com$)/.test(host);
+  const source=clean(params.get('utm_source')||(host?(host===location.hostname?'내부':host):'직접/알 수 없음'));
+  const medium=clean(params.get('utm_medium')||(searchEngine?'organic':host?'referral':'direct'));
+  const campaign=clean(params.get('utm_campaign'));
+  const keyword=clean(params.get('utm_term')); // Search-engine organic terms are usually unavailable.
+  const device=/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)?'모바일':'PC';
+  const {error}=await db.rpc('namchon_record_visit_detail',{
+   p_token:token,p_source:source,p_medium:medium,p_campaign:campaign,p_keyword:keyword,
+   p_referrer_host:host,p_page:location.pathname.slice(0,160),p_device:device
+  });
+  if(error)console.warn('방문 분석 수집 오류:',error.message);
+ }catch(_){/* Tracking must never interrupt the storefront. */}
+})();
+
+function cleanNamchonRich(html){
+ const doc=new DOMParser().parseFromString('<div>'+String(html||'')+'</div>','text/html');
+ const allow=new Set(['B','STRONG','I','EM','U','SPAN','P','DIV','BR','UL','OL','LI','H2','H3','H4','SMALL','S']);
+ function clean(el){for(const child of [...el.childNodes]){if(child.nodeType===8){child.remove();continue}if(child.nodeType!==1)continue;if(!allow.has(child.tagName)){child.replaceWith(...child.childNodes);continue}const css=[];const st=child.style;const color=st.color;if(/^#[0-9a-f]{3,8}$/i.test(color)||/^rgba?\([\d\s.,%]+\)$/i.test(color))css.push('color:'+color);if(/^\d{2}px$/.test(st.fontSize)&&parseInt(st.fontSize)>=10&&parseInt(st.fontSize)<=72)css.push('font-size:'+st.fontSize);if(['bold','normal','600','700','800','900'].includes(st.fontWeight))css.push('font-weight:'+st.fontWeight);if(['italic','normal'].includes(st.fontStyle))css.push('font-style:'+st.fontStyle);if(['underline','line-through','none'].includes(st.textDecorationLine))css.push('text-decoration:'+st.textDecorationLine);for(const attr of [...child.attributes])child.removeAttribute(attr.name);if(css.length)child.setAttribute('style',css.join(';'));clean(child)}}
+ const root=doc.body.firstElementChild;clean(root);return root.innerHTML;
 }
-
-$('popup-close').onclick=()=>$('popup-overlay').classList.add('hidden');load();
+function namchonTextNodes(){
+ const roots=['#nav','#hero-label','#hero-title','#hero-desc','#categories','#featured','#intro','#product-sections','#notice-list','#store-details','#footer-text','#popup-title','#popup-body'];
+ const result=[];
+ for(const selector of roots){const root=document.querySelector(selector);if(!root)continue;for(const el of [root,...root.querySelectorAll('h1,h2,h3,h4,p,strong,small,span,a,button,li,div')]){if(!el.textContent?.trim()||el.closest('script,style,input,textarea,select,svg'))continue;if(el.querySelector('h1,h2,h3,h4,p,strong,small,span,a,button,li,img,svg,input'))continue;let n=el,parts=[];while(n&&n!==root){parts.unshift([...n.parentElement.children].indexOf(n));n=n.parentElement}result.push({el,key:selector+'|'+parts.join('.')})}}
+ return result;
+}
+async function initRichText(){
+ let settings;try{settings=await getSettings()}catch(_){return}
+ let saved={};try{saved=JSON.parse(settings.rich_page_overrides||'{}')}catch(_){}if(!saved||typeof saved!=='object'||Array.isArray(saved))saved={};
+ const nodes=namchonTextNodes();for(const {el,key} of nodes)if(typeof saved[key]==='string')el.innerHTML=cleanNamchonRich(saved[key]);
+ if(new URLSearchParams(location.search).get('namchon_edit')!=='1'||parent===window||parent.location.origin!==location.origin)return;
+ const map=new Map(nodes.map(({el,key})=>[key,el]));const send=(action,html)=>parent.postMessage({namchonRich:true,action,html},location.origin);
+ const style=document.createElement('style');style.textContent='[data-rich-edit]{outline:1px dashed #b99351;cursor:text;min-height:1em}[data-rich-edit]:focus{outline:3px solid #f0bd52;background:#3a3024}';document.head.append(style);
+ let current=null,range=null;
+ for(const {el,key} of nodes){el.contentEditable='true';el.dataset.richEdit=key;el.addEventListener('focus',()=>current=el);el.addEventListener('mouseup',()=>{const sel=getSelection();if(sel?.rangeCount)range=sel.getRangeAt(0).cloneRange()});el.addEventListener('keyup',()=>{const sel=getSelection();if(sel?.rangeCount)range=sel.getRangeAt(0).cloneRange()});el.addEventListener('input',()=>send('changed'));}
+ document.addEventListener('click',e=>{if(e.target.closest('a'))e.preventDefault()},true);
+ window.addEventListener('message',e=>{if(e.origin!==location.origin||e.source!==parent||!e.data?.namchonRich)return;
+ if(e.data.action==='export'){const result={...saved};for(const [key,el] of map)result[key]=cleanNamchonRich(el.innerHTML);send('exported',result);return}
+ if(e.data.action!=='format'||!current)return;current.focus();if(range){const sel=getSelection();sel.removeAllRanges();try{sel.addRange(range)}catch(_){}}
+ const c=e.data.command;if(['bold','italic','underline','undo'].includes(c))document.execCommand(c);if(c==='paragraph')document.execCommand('insertParagraph');if(c==='break')document.execCommand('insertLineBreak');if(c==='color')document.execCommand('foreColor',false,e.data.value);if(c==='size'){const n=Math.max(10,Math.min(72,Number(e.data.value)||16));document.execCommand('fontSize',false,'7');for(const font of current.querySelectorAll('font[size="7"]')){const span=document.createElement('span');span.style.fontSize=n+'px';span.innerHTML=font.innerHTML;font.replaceWith(span)}}const sel=getSelection();if(sel?.rangeCount)range=sel.getRangeAt(0).cloneRange();send('changed')});send('ready');
+}
