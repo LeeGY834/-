@@ -7,3 +7,15 @@
 #intro h2{color:#e7c58c;font-size:clamp(23px,3vw,32px);text-shadow:0 2px 5px #0008;max-width:750px}
 #intro #intro-text{max-width:720px;color:#fff;font-size:clamp(15px,1.8vw,18px);line-height:1.95;white-space:pre-line;text-shadow:0 2px 5px #000}
 @media(max-width:780px){#intro{padding:40px 22px;min-height:320px}#intro::before{background-size:auto 100%;background-position:75% center}#intro::after{background:linear-gradient(90deg,rgba(12,10,9,.95),rgba(12,10,9,.7))}}
+
+/* Editable background-image layers: filter/opacity apply only to the photo, not text. */
+#home{position:relative;isolation:isolate;overflow:hidden}
+#home::before{content:"";position:absolute;inset:0;z-index:-2;background-image:var(--live-hero-image,none);background-size:var(--live-hero-size,cover);background-position:var(--live-hero-position,center);background-repeat:no-repeat;filter:var(--live-hero-filter,none);opacity:var(--live-hero-opacity,1)}
+#home::after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,#0009,#0005);pointer-events:none}
+#intro::before{filter:var(--live-intro-filter,none);opacity:var(--live-intro-opacity,.9);background-size:var(--live-intro-size,200% 100%);background-position:var(--live-intro-position,right center);border-radius:var(--live-intro-radius,0px)}
+.live-image-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,330px);gap:14px;align-items:start}
+.live-image-frame{background:#302c28;border:1px solid #705b40;border-radius:10px;padding:10px;min-width:0;display:flex;justify-content:center;overflow:auto}
+.live-image-frame iframe{width:100%;height:800px;max-width:none;flex-shrink:0;border:0;background:#111;border-radius:6px;transition:width .15s}
+#live-image-controls{position:sticky;top:90px;max-height:78vh;overflow-y:auto;padding:15px;min-width:0}
+.live-image-sliders{display:grid;gap:6px}.live-image-sliders input[type=range]{width:100%}
+@media(max-width:800px){.live-image-layout{grid-template-columns:1fr}#live-image-controls{position:static;max-height:none}.live-image-frame iframe{height:620px}}
