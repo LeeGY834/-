@@ -1,19 +1,19 @@
 import {liveImageEditor} from './admin-image-editor.js';
 import {db,configured,categories,esc,getSettings,msg} from './common.js';
 const $=id=>document.getElementById(id);let active='products';let currentUser=null;let currentRole=null;
-const tabs=[['products','상품 관리'],['settings','홈페이지·매장 정보'],['design','디자인·화면 설정'],['notices','행사·공지사항'],['popups','행사 팝업'],['code','고급 코드 편집'],['visual','화면 보면서 편집'],['rich','전체 글자·문단 편집'],['images','이미지 직접 수정'],['liveImages','화면 보면서 이미지 편집'],['layout','카드 배치·크기·순서'],['categoryManager','카테고리 관리'],['visitors','방문자 통계'],['users','계정 관리']];
+const tabs=[['products','상품 관리'],['productOrder','상품 순서 편집'],['settings','홈페이지·매장 정보'],['design','디자인·화면 설정'],['notices','행사·공지사항'],['popups','행사 팝업'],['code','고급 코드 편집'],['visual','화면 보면서 편집'],['rich','전체 글자·문단 편집'],['images','이미지 직접 수정'],['liveImages','화면 보면서 이미지 편집'],['layout','카드 배치·크기·순서'],['categoryManager','카테고리 관리'],['visitors','방문자 통계'],['users','계정 관리']];
 const status=s=>$('status').textContent=s;
 const input=(key,label,value='',type='text')=>`<label class="field">${label}<input name="${key}" type="${type}" value="${esc(value)}"></label>`;
 const area=(key,label,value='')=>`<label class="field">${label}<textarea name="${key}" rows="3">${esc(value)}</textarea></label>`;
 const check=(key,label,v=false)=>`<label><input name="${key}" type="checkbox" ${v?'checked':''}> ${label}</label>`;
 const formData=form=>Object.fromEntries([...new FormData(form).entries()]);
-const allowedTabs=()=>tabs.filter(([key])=>currentRole==='owner'||(currentRole==='manager'&&!['code','users'].includes(key))||(currentRole==='staff'&&['products','popups','notices'].includes(key)));
+const allowedTabs=()=>tabs.filter(([key])=>currentRole==='owner'||(currentRole==='manager'&&!['code','users'].includes(key))||(currentRole==='staff'&&['products','productOrder','popups','notices'].includes(key)));
 async function authorized(){const {data:{user},error:authError}=await db.auth.getUser();if(authError||!user)return false;const {data,error}=await db.from('admin_users').select('user_id,role').eq('user_id',user.id).maybeSingle();if(error)throw error;currentUser=data?user:null;currentRole=data?.role||null;return !!data}
 async function show(){if(!configured){status('먼저 js/config.js에 Supabase 연결 정보를 입력하세요.');return}try{if(await authorized()){$('login').classList.add('hidden');$('dashboard').classList.remove('hidden');if(!allowedTabs().some(([k])=>k===active))active=allowedTabs()[0]?.[0]||'products';$('tabs').innerHTML=allowedTabs().map(([k,n])=>`<button class="btn ${k===active?'':'alt'}" data-tab="${k}">${n}</button>`).join('');document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{active=b.dataset.tab;show()});$('section-title').textContent=tabs.find(x=>x[0]===active)[1];await render();status('관리자 로그인 상태')}else{$('dashboard').classList.add('hidden');$('login').classList.remove('hidden');status('관리자 계정으로 로그인하세요.')}}catch(e){status('인증 확인 오류: '+msg(e))}}
 $('login-btn').onclick=async()=>{if(!configured)return status('Supabase 연결 설정이 필요합니다.');const {error}=await db.auth.signInWithPassword({email:$('email').value,password:$('password').value});if(error)return status(msg(error));if(!(await authorized())){await db.auth.signOut();return status('관리자 권한이 없는 계정입니다.')}show()};
 $('logout').onclick=async()=>{await db.auth.signOut();currentUser=null;currentRole=null;show()};
 async function upload(file,bucket){if(!file||!file.size)return null;if(!file.type.startsWith('image/'))throw Error('이미지 파일만 업로드할 수 있습니다.');if(file.size>5*1024*1024)throw Error('이미지는 5MB 이하로 업로드하세요.');const path=`${currentUser.id}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;const {error}=await db.storage.from(bucket).upload(path,file,{contentType:file.type});if(error)throw error;return db.storage.from(bucket).getPublicUrl(path).data.publicUrl}
-async function render(){try{if(active==='products')await products();if(active==='settings')await settings();if(active==='design')await design();if(active==='notices')await entries('notices');if(active==='popups')await entries('popups');if(active==='code')await codeEditor();if(active==='visual')await visualEditor();if(active==='rich')await richPageEditor();if(active==='images')await imageEditor();if(active==='liveImages')await liveImageEditor(currentUser);if(active==='layout')await cardLayoutEditor();if(active==='categoryManager')await categoryManager();if(active==='visitors')await visitorDashboard();if(active==='users')await userManager()}catch(e){status('오류: '+msg(e))}}
+async function render(){try{if(active==='products')await products();if(active==='productOrder')await productOrderEditor();if(active==='settings')await settings();if(active==='design')await design();if(active==='notices')await entries('notices');if(active==='popups')await entries('popups');if(active==='code')await codeEditor();if(active==='visual')await visualEditor();if(active==='rich')await richPageEditor();if(active==='images')await imageEditor();if(active==='liveImages')await liveImageEditor(currentUser);if(active==='layout')await cardLayoutEditor();if(active==='categoryManager')await categoryManager();if(active==='visitors')await visitorDashboard();if(active==='users')await userManager()}catch(e){status('오류: '+msg(e))}}
 async function products(){const {data,error}=await db.from('products').select('*').order('sort_order');if(error)throw error;const rows=data||[];const categoryNames=await loadCategoryNames();$('editor').innerHTML=`<div class="stack"><button class="btn" id="new-item">+ 새 상품</button><div id="product-form"></div><div>${rows.map(p=>`<div class="item-row"><span>${esc(p.category)} · ${esc(p.name)} <span class="gold">${esc(p.price_text)}</span></span><div class="toolbar"><button class="btn alt" data-edit="${p.id}">수정</button><button class="btn alt" data-delete="${p.id}">삭제</button></div></div>`).join('')}</div></div>`;const edit=p=>{$('product-form').innerHTML=`<form class="stack" id="edit-product"><h3>${p.id?'상품 수정':'새 상품'}</h3>${input('name','상품명',p.name)}<label class="field">카테고리<select name="category">${[...new Set([...categoryNames,p.category].filter(Boolean))].map(c=>`<option ${c===p.category?'selected':''}>${esc(c)}</option>`).join('')}</select></label>${input('price_text','가격 문구',p.price_text)}${area('description','설명',p.description)}${input('sort_order','정렬 순서',p.sort_order??0,'number')}<label class="field">상품 사진 업로드<input name="photo" type="file" accept="image/*"></label>${p.image_url?`<img src="${esc(p.image_url)}" alt="현재 사진" style="max-width:160px">`:''}${check('featured','메인 추천 상품',p.is_featured)}${check('visible','고객에게 표시',p.is_visible??true)}${check('sold_out','품절',p.is_sold_out)}<button class="btn" type="submit">이 상품 저장</button></form>`;$('edit-product').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget,d=formData(f);try{const image=await upload(f.elements.photo.files[0],'product-images');const payload={name:d.name.trim(),category:d.category,price_text:d.price_text,description:d.description,sort_order:Number(d.sort_order)||0,is_featured:f.elements.featured.checked,is_visible:f.elements.visible.checked,is_sold_out:f.elements.sold_out.checked};if(image)payload.image_url=image;if(!payload.name)throw Error('상품명을 입력하세요.');const q=p.id?db.from('products').update(payload).eq('id',p.id):db.from('products').insert(payload);const {error}=await q;if(error)throw error;status('상품이 저장되었습니다.');await products()}catch(err){status('저장 실패: '+msg(err))}}};$('new-item').onclick=()=>edit({category:categoryNames[0]||'한우',is_visible:true});document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>edit(rows.find(p=>p.id===b.dataset.edit)));document.querySelectorAll('[data-delete]').forEach(b=>b.onclick=async()=>{if(!confirm('이 상품을 삭제할까요?'))return;const {error}=await db.from('products').delete().eq('id',b.dataset.delete);if(error)return status(msg(error));products()})}
 async function settings(){const values=await getSettings();const fields=[['hero_title','메인 배너 제목'],['hero_desc','메인 배너 설명'],['intro','매장 소개'],['address','매장 주소'],['hours','영업시간'],['parking','주차 안내'],['phone','전화번호']];$('editor').innerHTML=`<form id="settings-form" class="stack">${fields.map(([k,n])=>area(k,n,values[k]||'')).join('')}<label class="field">메인 배너 이미지<input name="hero_file" type="file" accept="image/*"></label>${values.hero_image?`<img src="${esc(values.hero_image)}" style="max-width:300px" alt="현재 배너">`:''}<button class="btn">설정 저장</button></form>`;$('settings-form').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget;try{const changes=fields.map(([key])=>({key,value:f.elements[key].value}));const image=await upload(f.elements.hero_file.files[0],'product-images');if(image)changes.push({key:'hero_image',value:image});const {error}=await db.from('site_settings').upsert(changes,{onConflict:'key'});if(error)throw error;status('홈페이지 설정을 저장했습니다.');settings()}catch(err){status(msg(err))}}}
 async function design(){
@@ -128,6 +128,55 @@ async function visualEditor(){
  $('v-save').onclick=async()=>{const btn=$('v-save');btn.disabled=true;try{const changes=fields.map(([key])=>({key,value:document.querySelector(`[data-vinput="${key}"]`).value}));const image=await upload($('v-hero-file').files[0],'product-images');if(image)changes.push({key:'hero_image',value:image});const {error}=await db.from('site_settings').upsert(changes,{onConflict:'key'});if(error)throw error;info('저장 완료! 실제 고객 홈페이지를 새로고침해 확인하세요.');status('시각적 편집 내용이 저장되었습니다.');frame.contentWindow.location.reload()}catch(e){info('저장 실패: '+msg(e))}finally{btn.disabled=false}};
 }
 
+
+
+// 한우·한돈 등 카테고리별 상품 순서를 사진과 고객 화면을 보며 편집
+async function productOrderEditor(){
+ const {data,error}=await db.from('products').select('*').order('sort_order');
+ if(error)throw error;
+ const products=data||[];
+ const names=(await loadCategoryNames()).filter(n=>products.some(p=>p.category===n));
+ for(const p of products)if(!names.includes(p.category))names.push(p.category);
+ const editor=$('editor');
+ editor.innerHTML=`<div class="order-editor"><p class="muted">상품 사진을 보면서 순서를 변경하세요. 왼쪽 상품을 드래그하거나 ↑ ↓ 버튼으로 이동하면 오른쪽 고객 화면 미리보기에 반영됩니다. <strong>저장하기</strong>를 눌러야 실제 홈페이지에 적용됩니다.</p><div class="order-categories">${names.map((n,i)=>`<button type="button" class="btn ${i?'alt':''}" data-order-category="${esc(n)}">${esc(n)}</button>`).join('')}</div><div class="order-columns"><section class="panel"><div class="order-heading"><h3 id="order-category-title"></h3><button class="btn alt" type="button" id="order-reset">변경 취소</button></div><div id="order-items" class="order-items"></div></section><section class="panel"><div class="order-heading"><h3>홈페이지 미리보기</h3><div class="toolbar"><button class="btn" id="order-pc" type="button">PC</button><button class="btn alt" id="order-mobile" type="button">모바일</button></div></div><div id="order-preview" class="order-preview"></div></section></div><div class="order-actions"><p id="order-message" class="muted" role="status">저장 전에는 고객 홈페이지가 변경되지 않습니다.</p><button class="btn" id="order-save" type="button">✓ 상품 순서 저장하기</button></div></div>`;
+ const original=new Map(names.map(n=>[n,products.filter(p=>p.category===n).map(p=>String(p.id))]));
+ const current=new Map([...original].map(([n,ids])=>[n,[...ids]]));
+ const byId=new Map(products.map(p=>[String(p.id),p]));
+ let category=names[0]||'',mobile=false,dragId=null;
+ const msgEl=editor.querySelector('#order-message');
+ const draw=()=>{
+  editor.querySelector('#order-category-title').textContent=category+' 상품 순서';
+  editor.querySelectorAll('[data-order-category]').forEach(b=>b.className='btn '+(b.dataset.orderCategory===category?'':'alt'));
+  const ids=current.get(category)||[];
+  editor.querySelector('#order-items').innerHTML=ids.map((id,i)=>{const p=byId.get(id);return `<div class="order-item" draggable="true" data-item-id="${esc(id)}"><span class="order-handle" aria-label="끌어서 이동">⠿</span><div class="order-thumb">${p.image_url?`<img src="${esc(p.image_url)}" alt="">`:'사진 없음'}</div><span class="order-number">${i+1}</span><span class="order-name">${esc(p.name)}${!p.is_visible?'<small>숨김 상품</small>':''}</span><div class="order-moves"><button type="button" data-direction="up" aria-label="위로 이동" ${i===0?'disabled':''}>↑</button><button type="button" data-direction="down" aria-label="아래로 이동" ${i===ids.length-1?'disabled':''}>↓</button></div></div>`}).join('');
+  editor.querySelector('#order-preview').className='order-preview'+(mobile?' mobile':'');
+  editor.querySelector('#order-preview').innerHTML=`<div class="order-preview-title">남촌축산 ${esc(category)}</div><p class="order-preview-subtitle">고객 홈페이지 상품 표시 순서 미리보기</p><div class="order-preview-grid">${ids.map(id=>{const p=byId.get(id);return p.is_visible===false?'':`<article><div class="order-preview-image">${p.image_url?`<img src="${esc(p.image_url)}" alt="">`:'사진 준비 중'}</div><strong>${esc(p.name)}</strong><span>${esc(p.price_text||'가격 문의')}</span></article>`}).join('')}</div>`;
+  editor.querySelectorAll('.order-item').forEach(el=>{
+   el.querySelectorAll('[data-direction]').forEach(b=>b.onclick=()=>{const a=current.get(category),i=a.indexOf(el.dataset.itemId),j=i+(b.dataset.direction==='up'?-1:1);if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];draw()});
+   el.addEventListener('dragstart',e=>{dragId=el.dataset.itemId;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',dragId);el.classList.add('dragging')});
+   el.addEventListener('dragend',()=>{dragId=null;el.classList.remove('dragging')});
+   el.addEventListener('dragover',e=>{if(dragId&&dragId!==el.dataset.itemId)e.preventDefault()});
+   el.addEventListener('drop',e=>{e.preventDefault();if(!dragId||dragId===el.dataset.itemId)return;const a=current.get(category),from=a.indexOf(dragId),to=a.indexOf(el.dataset.itemId);if(from<0||to<0)return;a.splice(from,1);a.splice(to,0,dragId);dragId=null;draw()});
+  });
+ };
+ editor.querySelectorAll('[data-order-category]').forEach(b=>b.onclick=()=>{category=b.dataset.orderCategory;draw()});
+ editor.querySelector('#order-pc').onclick=()=>{mobile=false;draw()};
+ editor.querySelector('#order-mobile').onclick=()=>{mobile=true;draw()};
+ editor.querySelector('#order-reset').onclick=()=>{current.set(category,[...(original.get(category)||[])]);msgEl.textContent=category+' 순서를 원래대로 되돌렸습니다.';draw()};
+ editor.querySelector('#order-save').onclick=async()=>{
+  const btn=editor.querySelector('#order-save');btn.disabled=true;msgEl.textContent='상품 순서를 저장하고 있습니다...';
+  try{
+   let index=1,changes=0;
+   for(const n of names){for(const id of current.get(n)||[]){const p=byId.get(id);if(Number(p.sort_order)!==index){const {error}=await db.from('products').update({sort_order:index}).eq('id',p.id);if(error)throw error;p.sort_order=index;changes++}index++}}
+   for(const n of names)original.set(n,[...current.get(n)]);
+   msgEl.textContent=`저장 완료! ${changes}개 상품의 순서를 업데이트했습니다. 고객 홈페이지를 새로고침하면 반영됩니다.`;
+   status('상품 순서 저장 완료');
+  }catch(e){msgEl.textContent='저장 오류: '+msg(e)+' (일부 상품이 저장됐을 수 있으니 새로고침해 확인하세요.)'}
+  finally{btn.disabled=false}
+ };
+ if(!names.length){editor.innerHTML='<p class="muted">등록된 상품이 없습니다. 상품 관리에서 상품을 먼저 등록하세요.</p>';return}
+ draw();
+}
 
 // 카드 배치·크기·순서: 기존 products.sort_order 및 site_settings 사용
 async function cardLayoutEditor(){
