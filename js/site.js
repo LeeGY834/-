@@ -14,7 +14,7 @@ function renderCategories(names){
  $('product-sections').innerHTML=names.map(c=>`<section class="section" id="cat-${encodeURIComponent(c)}"><h2>${esc(c)}</h2><div class="cards" data-cat="${esc(c)}"></div></section>`).join('');
 }
 renderCategories(defaultCategories);
-function card(p){return `<article class="card">${p.image_url?`<img data-live-product="${esc(p.id)}" src="${esc(p.image_url)}" alt="${esc(p.name)}" loading="lazy">`:'<div style="height:180px;background:#292929;display:grid;place-items:center;color:#999">사진 준비 중</div>'}<div class="details"><strong>${esc(p.name)}</strong><p class="price">${esc(p.price_text||'가격 문의')}</p><p class="muted">${esc(p.description||'')}</p>${p.is_sold_out?'<span class="gold">품절</span>':''}</div></article>`}
+function card(p){return `<article class="card" data-product-id="${esc(String(p.id))}">${p.image_url?`<img data-live-product="${esc(p.id)}" src="${esc(p.image_url)}" alt="${esc(p.name)}" loading="lazy">`:'<div style="height:180px;background:#292929;display:grid;place-items:center;color:#999">사진 준비 중</div>'}<div class="details"><strong>${esc(p.name)}</strong><p class="price">${esc(p.price_text||'가격 문의')}</p><p class="muted">${esc(p.description||'')}</p>${p.is_sold_out?'<span class="gold">품절</span>':''}</div></article>`}
 async function load(){if(!configured){$('featured').innerHTML='<p class="muted">관리자 설정 후 상품이 표시됩니다.</p>';return}try{const [settings,productsResult,noticesResult,popupResult]=await Promise.all([getSettings(),db.from('products').select('*').eq('is_visible',true).order('sort_order'),db.from('notices').select('*').eq('visible',true).order('created_at',{ascending:false}),db.from('popups').select('*').eq('enabled',true).order('created_at',{ascending:false}).limit(1)]);for(const r of [productsResult,noticesResult,popupResult])if(r.error)throw r.error;const products=productsResult.data||[];const categoryNames=categoryList(settings,products);renderCategories(categoryNames);
  const color=(v,d)=>/^#[0-9a-fA-F]{6}$/.test(v||'')?v:d;
  document.documentElement.style.setProperty('--accent',color(settings.theme_accent,'#d8b574'));
@@ -77,7 +77,10 @@ function cleanNamchonRich(html){
 function namchonTextNodes(){
  const roots=['#nav','#hero-label','#hero-title','#hero-desc','#categories','#featured','#intro','#product-sections','#notice-list','#store-details','#footer-text','#popup-title','#popup-body'];
  const result=[];
- for(const selector of roots){const root=document.querySelector(selector);if(!root)continue;for(const el of [root,...root.querySelectorAll('h1,h2,h3,h4,p,strong,small,span,a,button,li,div')]){if(!el.textContent?.trim()||el.closest('script,style,input,textarea,select,svg'))continue;if(el.querySelector('h1,h2,h3,h4,p,strong,small,span,a,button,li,img,svg,input'))continue;let n=el,parts=[];while(n&&n!==root){parts.unshift([...n.parentElement.children].indexOf(n));n=n.parentElement}result.push({el,key:selector+'|'+parts.join('.')})}}
+ for(const selector of roots){const root=document.querySelector(selector);if(!root)continue;for(const el of [root,...root.querySelectorAll('h1,h2,h3,h4,p,strong,small,span,a,button,li,div')]){if(!el.textContent?.trim()||el.closest('script,style,input,textarea,select,svg'))continue;if(el.querySelector('h1,h2,h3,h4,p,strong,small,span,a,button,li,img,svg,input'))continue;let n=el,parts=[];while(n&&n!==root){parts.unshift([...n.parentElement.children].indexOf(n));n=n.parentElement}const card=el.closest('[data-product-id]');
+  let key=selector+'|'+parts.join('.');
+  if(card){const local=[];let item=el;while(item&&item!==card){local.unshift([...item.parentElement.children].indexOf(item));item=item.parentElement}key='product:'+card.dataset.productId+'|'+local.join('.')}
+  result.push({el,key})}}
  return result;
 }
 async function initRichText(){
