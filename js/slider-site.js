@@ -1,0 +1,12 @@
+import {esc} from './common.js';
+export function initHomepageSlider(settings){
+ const host=document.getElementById('namchon-home-slides');if(!host)return;let slides=[];try{const v=JSON.parse(settings.homepage_slides||'[]');if(Array.isArray(v))slides=v.filter(s=>s&&typeof s==='object')}catch{}
+ if(!slides.length){host.hidden=true;return}host.hidden=false;
+ const seconds=Math.max(1,Math.min(30,Number(settings.homepage_slide_seconds)||3));const auto=settings.homepage_slide_auto!=='false';let index=0,timer;
+ const safeLink=s=>/^(https?:\/\/|#|\/)/i.test(s||'')?s:'';
+ host.innerHTML=`<div class="nhs-frame"><div class="nhs-track"></div><button class="nhs-arrow nhs-prev" aria-label="이전 슬라이드" type="button">‹</button><button class="nhs-arrow nhs-next" aria-label="다음 슬라이드" type="button">›</button><div class="nhs-dots"></div></div>`;
+ const track=host.querySelector('.nhs-track');track.innerHTML=slides.map(s=>{const inner=`${s.image_url?`<img src="${esc(s.image_url)}" alt="${esc(s.title||'홍보 이미지')}" loading="lazy">`:''}<span class="nhs-caption"><strong>${esc(s.title||'')}</strong><small>${esc(s.description||'')}</small></span>`;const link=safeLink(s.link);return `<div class="nhs-slide" style="background:${/^#[0-9a-f]{6}$/i.test(s.background||'')?s.background:'#241a15'}">${link?`<a href="${esc(link)}">${inner}</a>`:`<div>${inner}</div>`}</div>`}).join('');
+ const dots=host.querySelector('.nhs-dots');dots.innerHTML=slides.map((_,i)=>`<button type="button" aria-label="${i+1}번 슬라이드" data-i="${i}"></button>`).join('');
+ const show=i=>{index=(i+slides.length)%slides.length;track.style.transform=`translateX(-${index*100}%)`;dots.querySelectorAll('button').forEach((b,j)=>{b.classList.toggle('active',j===index);b.setAttribute('aria-current',String(j===index))})};const stop=()=>clearInterval(timer);const start=()=>{stop();if(auto&&slides.length>1&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches)timer=setInterval(()=>show(index+1),seconds*1000)};
+ host.querySelector('.nhs-prev').onclick=()=>{show(index-1);start()};host.querySelector('.nhs-next').onclick=()=>{show(index+1);start()};dots.querySelectorAll('button').forEach(b=>b.onclick=()=>{show(Number(b.dataset.i));start()});host.addEventListener('mouseenter',stop);host.addEventListener('mouseleave',start);host.addEventListener('focusin',stop);host.addEventListener('focusout',e=>{if(!host.contains(e.relatedTarget))start()});if(slides.length===1)host.querySelectorAll('.nhs-arrow,.nhs-dots').forEach(el=>el.hidden=true);show(0);start();
+}
