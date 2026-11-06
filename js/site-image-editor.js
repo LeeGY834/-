@@ -23,9 +23,9 @@ function apply(item,style,imageUrl){const s=sanitizeImageStyle(style),el=item.el
   el.style.transform=`scale(${s.zoom/100})`;el.style.transformOrigin=`${s.x}% ${s.y}%`;
  }
 }
-export async function initLiveImages(){let settings;try{settings=await getSettings()}catch{return}
+export async function initLiveImages(settings){if(!settings){try{settings=await getSettings()}catch{return}}
  let saved={};try{saved=JSON.parse(settings.image_visual_styles||'{}')}catch{}if(!saved||typeof saved!=='object'||Array.isArray(saved))saved={};
- const items=elements();const urls={hero:settings.hero_image||'',intro:settings.intro_background_image||'images/namchon-jiyuk-background.png'};
+ const items=elements();const urls={hero:settings.hero_image||'',intro:settings.intro_background_image||'images/namchon-jiyuk-background.webp'};
  for(const item of items){item.url=urls[item.type]||((item.type==='product'||item.type==='popup')?item.el.src:'');apply(item,saved[item.key]||{},item.url)}
  if(new URLSearchParams(location.search).get('namchon_image_live')!=='1'||window.parent===window)return;
  try{if(window.parent.location.origin!==location.origin)return}catch{return}

@@ -16,7 +16,7 @@ function renderCategories(names){
  $('product-sections').innerHTML=names.map(c=>`<section class="section" id="cat-${encodeURIComponent(c)}"><h2>${esc(c)}</h2><div class="cards" data-cat="${esc(c)}"></div></section>`).join('');
 }
 renderCategories(defaultCategories);
-function card(p){return `<article class="card" data-product-id="${esc(String(p.id))}">${p.image_url?`<img data-live-product="${esc(p.id)}" src="${esc(p.image_url)}" alt="${esc(p.name)}" loading="lazy">`:'<div style="height:180px;background:#292929;display:grid;place-items:center;color:#999">사진 준비 중</div>'}<div class="details"><strong>${esc(p.name)}</strong><p class="price">${esc(p.price_text||'가격 문의')}</p><p class="muted">${esc(p.description||'')}</p>${p.is_sold_out?'<span class="gold">품절</span>':''}</div></article>`}
+function card(p){return `<article class="card" data-product-id="${esc(String(p.id))}">${p.image_url?`<img data-live-product="${esc(p.id)}" src="${esc(p.image_url)}" alt="${esc(p.name)}" loading="lazy" decoding="async">`:'<div style="height:180px;background:#292929;display:grid;place-items:center;color:#999">사진 준비 중</div>'}<div class="details"><strong>${esc(p.name)}</strong><p class="price">${esc(p.price_text||'가격 문의')}</p><p class="muted">${esc(p.description||'')}</p>${p.is_sold_out?'<span class="gold">품절</span>':''}</div></article>`}
 async function load(){if(!configured){$('featured').innerHTML='<p class="muted">관리자 설정 후 상품이 표시됩니다.</p>';return}try{const [settings,productsResult,noticesResult,popupResult]=await Promise.all([getSettings(),db.from('products').select('*').eq('is_visible',true).order('sort_order'),db.from('notices').select('*').eq('visible',true).order('created_at',{ascending:false}),db.from('popups').select('*').eq('enabled',true).order('created_at',{ascending:false}).limit(1)]);for(const r of [productsResult,noticesResult,popupResult])if(r.error)throw r.error;const products=productsResult.data||[];const categoryNames=categoryList(settings,products);renderCategories(categoryNames);initHomepageSlider(settings);renderWeeklySale(settings);
  const color=(v,d)=>/^#[0-9a-fA-F]{6}$/.test(v||'')?v:d;
  document.documentElement.style.setProperty('--accent',color(settings.theme_accent,'#d8b574'));
@@ -42,8 +42,8 @@ async function load(){if(!configured){$('featured').innerHTML='<p class="muted">
  popupImage.style.maxHeight='none';
  popupImage.style.height=popupNum('popup_image_height',250,80,650)+'px';
  popupImage.style.objectFit=settings.popup_image_fit==='contain'?'contain':'cover';
- popupImage.dataset.livePopup=pop.id;$('popup-title').textContent=pop.title;$('popup-body').textContent=pop.body||'';if(pop.image_url){$('popup-image').src=pop.image_url;$('popup-image').classList.remove('hidden')}$('popup-overlay').classList.remove('hidden')}}catch(e){$('featured').textContent='데이터를 불러오지 못했습니다: '+e.message}}
-$('popup-close').onclick=()=>$('popup-overlay').classList.add('hidden');load().then(async()=>{await initRichText();await initLiveImages()}).catch(console.error);
+ popupImage.dataset.livePopup=pop.id;$('popup-title').textContent=pop.title;$('popup-body').textContent=pop.body||'';if(pop.image_url){$('popup-image').src=pop.image_url;$('popup-image').classList.remove('hidden')}$('popup-overlay').classList.remove('hidden')}return settings;}catch(e){$('featured').textContent='데이터를 불러오지 못했습니다: '+e.message}}
+$('popup-close').onclick=()=>$('popup-overlay').classList.add('hidden');load().then(async settings=>{await initRichText(settings);await initLiveImages(settings)}).catch(console.error);
 
 // Anonymous, first-party analytics. No IP address or full referrer URL is stored.
 (async function trackNamchonVisit(){
@@ -85,8 +85,8 @@ function namchonTextNodes(){
   result.push({el,key})}}
  return result;
 }
-async function initRichText(){
- let settings;try{settings=await getSettings()}catch(_){return}
+async function initRichText(settings){
+ if(!settings)return;
  let saved={};try{saved=JSON.parse(settings.rich_page_overrides||'{}')}catch(_){}if(!saved||typeof saved!=='object'||Array.isArray(saved))saved={};
  const nodes=namchonTextNodes();for(const {el,key} of nodes)if(typeof saved[key]==='string')el.innerHTML=cleanNamchonRich(saved[key]);
  if(new URLSearchParams(location.search).get('namchon_edit')!=='1'||parent===window||parent.location.origin!==location.origin)return;
